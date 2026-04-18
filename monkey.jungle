@@ -1,0 +1,7 @@
+project.manifest = manifest.xml
+
+base.sourcePath = source
+base.resourcePath = resources
+
+# Device-specific overrides can be added here later, e.g.:
+# fr965.resourcePath = $(fr965.resourcePath);resources-round-454
