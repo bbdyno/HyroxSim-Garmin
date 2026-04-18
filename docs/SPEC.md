@@ -5,7 +5,7 @@ iOS(`HyroxCore/Sources/Models`), 안드로이드(`core-model`, `core-engine`), G
 
 ## 규약
 
-- **enum raw value**: 3 플랫폼 모두 **동일한 snake_case 문자열** 사용
+- **enum raw value**: 3 플랫폼 모두 **동일한 camelCase 문자열** 사용 (iOS Swift `enum: String` 자동 raw value 기준)
 - **시간 단위**: **밀리초 (ms)** 기본. 초 단위 필드는 접미사 `_s` 명시
 - **거리 단위**: **미터 (m)**
 - **무게 단위**: **킬로그램 (kg)**
@@ -18,26 +18,26 @@ iOS(`HyroxCore/Sources/Models`), 안드로이드(`core-model`, `core-engine`), G
 | Raw value | 의미 |
 |---|---|
 | `run` | 러닝 구간 (1km) |
-| `rox_zone` | 전환 구역 (스테이션 입/퇴장) |
+| `roxZone` | 전환 구역 (스테이션 입/퇴장) |
 | `station` | 8개 스테이션 중 하나 |
 
 **파생 속성**
-- `tracks_location`: run, rox_zone → true / station → false
-- `tracks_heart_rate`: 모두 true
+- `tracksLocation`: run, roxZone → true / station → false
+- `tracksHeartRate`: 모두 true
 
 ## 2. StationKind
 
-| Raw value | iOS enum | 표시명 |
-|---|---|---|
-| `ski_erg` | `.skiErg` | SkiErg |
-| `sled_push` | `.sledPush` | Sled Push |
-| `sled_pull` | `.sledPull` | Sled Pull |
-| `burpee_broad_jumps` | `.burpeeBroadJumps` | Burpee Broad Jumps |
-| `rowing` | `.rowing` | Rowing |
-| `farmers_carry` | `.farmersCarry` | Farmers Carry |
-| `sandbag_lunges` | `.sandbagLunges` | Sandbag Lunges |
-| `wall_balls` | `.wallBalls` | Wall Balls |
-| `custom` | `.custom(name)` | (커스텀) |
+| Raw value | iOS enum | 표시명 | 기본 타겟 |
+|---|---|---|---|
+| `skiErg` | `.skiErg` | SkiErg | 1000m |
+| `sledPush` | `.sledPush` | Sled Push | 50m |
+| `sledPull` | `.sledPull` | Sled Pull | 50m |
+| `burpeeBroadJumps` | `.burpeeBroadJumps` | Burpee Broad Jumps | 80m |
+| `rowing` | `.rowing` | Rowing | 1000m |
+| `farmersCarry` | `.farmersCarry` | Farmers Carry | 200m |
+| `sandbagLunges` | `.sandbagLunges` | Sandbag Lunges | 100m |
+| `wallBalls` | `.wallBalls` | Wall Balls | 100 reps |
+| `custom` | `.custom(name)` | (커스텀) | none |
 
 ## 3. StationTarget
 
@@ -52,17 +52,19 @@ Tagged union. JSON 표현:
 
 ## 4. HyroxDivision
 
-| Raw value | 표시명 |
-|---|---|
-| `mens_open_single` | Men's Open — Single |
-| `mens_open_double` | Men's Open — Double |
-| `mens_pro_single` | Men's Pro — Single |
-| `mens_pro_double` | Men's Pro — Double |
-| `womens_open_single` | Women's Open — Single |
-| `womens_open_double` | Women's Open — Double |
-| `womens_pro_single` | Women's Pro — Single |
-| `womens_pro_double` | Women's Pro — Double |
-| `mixed_double` | Mixed — Double |
+| Raw value | 표시명 | 단축 |
+|---|---|---|
+| `menOpenSingle` | Men's Open — Singles | M Open |
+| `menOpenDouble` | Men's Open — Doubles | M Open 2x |
+| `menProSingle` | Men's Pro — Singles | M Pro |
+| `menProDouble` | Men's Pro — Doubles | M Pro 2x |
+| `womenOpenSingle` | Women's Open — Singles | W Open |
+| `womenOpenDouble` | Women's Open — Doubles | W Open 2x |
+| `womenProSingle` | Women's Pro — Singles | W Pro |
+| `womenProDouble` | Women's Pro — Doubles | W Pro 2x |
+| `mixedDouble` | Mixed — Doubles | Mixed 2x |
+
+> `mixedDouble`의 스테이션 스펙은 `menOpenSpecs`와 동일 (공식 룰 미확정 상태 — iOS 구현 따름).
 
 ## 5. HyroxDivisionSpec
 
