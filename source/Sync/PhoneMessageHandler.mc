@@ -49,6 +49,14 @@ class PhoneMessageHandler {
             _handleGoalSet(data[MessageProtocol.K_PAYLOAD] as Dictionary);
             return;
         }
+        if (type.equals(MessageProtocol.T_TEMPLATE_UPSERT)) {
+            _handleTemplateUpsert(data[MessageProtocol.K_PAYLOAD] as Dictionary);
+            return;
+        }
+        if (type.equals(MessageProtocol.T_TEMPLATE_DELETE)) {
+            _handleTemplateDelete(data[MessageProtocol.K_PAYLOAD] as Dictionary);
+            return;
+        }
         if (type.equals(MessageProtocol.T_ACK)) {
             WorkoutStorage.markSynced(id);
             WorkoutStorage.vacuum(60l * 60l * 1000l);    // 1 hour grace
@@ -77,6 +85,22 @@ class PhoneMessageHandler {
                 payload);
             _transmit(env);
         }
+    }
+
+    // Phone pushes a custom WorkoutTemplate. Payload *is* the template dict;
+    // we upsert by template["id"]. Covers both brand-new templates and
+    // updates (e.g. the user toggled `usesRoxZone` on iOS).
+    function _handleTemplateUpsert(payload as Dictionary) as Void {
+        if (payload == null) { return; }
+        if (payload[WorkoutTemplate.ID] == null) { return; }
+        TemplateStore.upsert(payload);
+    }
+
+    function _handleTemplateDelete(payload as Dictionary) as Void {
+        if (payload == null) { return; }
+        var id = payload[WorkoutTemplate.ID] as String;
+        if (id == null) { return; }
+        TemplateStore.remove(id);
     }
 
     function _handleGoalSet(payload as Dictionary) as Void {

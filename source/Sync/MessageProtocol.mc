@@ -24,6 +24,7 @@ module MessageProtocol {
     const T_HELLO           = "hello";
     const T_GOAL_SET        = "goal.set";
     const T_TEMPLATE_UPSERT = "template.upsert";
+    const T_TEMPLATE_DELETE = "template.delete";
     const T_CMD_ADVANCE     = "cmd.advance";
     const T_CMD_PAUSE       = "cmd.pause";
     const T_CMD_RESUME      = "cmd.resume";

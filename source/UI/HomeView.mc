@@ -5,50 +5,79 @@
 //  Created by bbdyno on 4/19/26.
 //
 
-import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.WatchUi;
 
-// Landing screen: branded title + "Start" hint. SELECT opens the division
-// picker; from there the user chooses a preset which launches the engine.
-class HomeView extends WatchUi.View {
+// Menu2-based landing. Shows (in order):
+//   1. User-pushed custom templates from iOS/Android (phone → TemplateStore)
+//   2. A "HYROX 프리셋" entry that drills into the 9-division picker
+//
+// Selecting any saved template launches ActiveWorkoutView with that
+// template (including `usesRoxZone=false` variants). Selecting the preset
+// entry pushes DivisionPickerView which builds `WorkoutTemplate.hyroxPreset`
+// on demand.
+class HomeView extends WatchUi.Menu2 {
 
     function initialize() {
-        View.initialize();
+        Menu2.initialize({ :title => "HyroxSim" });
+        _populate();
     }
 
-    function onUpdate(dc as Graphics.Dc) as Void {
-        dc.setColor(Styles.COLOR_TEXT_PRIMARY, Styles.COLOR_BACKGROUND);
-        dc.clear();
+    function _populate() as Void {
+        var templates = TemplateStore.list();
+        for (var i = 0; i < templates.size(); i += 1) {
+            var t = templates[i] as Dictionary;
+            var name = t[WorkoutTemplate.NAME] as String;
+            var sub = _subLabelFor(t);
+            addItem(new MenuItem(
+                name,
+                sub,
+                "tpl:" + (t[WorkoutTemplate.ID] as String),
+                null
+            ));
+        }
+        addItem(new MenuItem(
+            "HYROX 프리셋",
+            "9 디비전 중 선택",
+            "presets",
+            null
+        ));
+    }
 
-        var w = dc.getWidth();
-        var h = dc.getHeight();
-        var cx = w / 2;
-
-        dc.setColor(Styles.COLOR_ACCENT, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(cx, h / 2 - 28, Graphics.FONT_LARGE,
-            "HyroxSim", Graphics.TEXT_JUSTIFY_CENTER);
-
-        dc.setColor(Styles.COLOR_TEXT_SECOND, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(cx, h / 2 + 6, Graphics.FONT_SMALL,
-            "HYROX Simulator", Graphics.TEXT_JUSTIFY_CENTER);
-
-        dc.setColor(Styles.COLOR_TEXT_TERTIARY, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(cx, h / 2 + 32, Graphics.FONT_XTINY,
-            "Press START", Graphics.TEXT_JUSTIFY_CENTER);
+    function _subLabelFor(template as Dictionary) as String {
+        var stations = WorkoutTemplate.stationCount(template);
+        var rox = (template[WorkoutTemplate.USES_ROX_ZONE] as Boolean) ? "ROX on" : "ROX off";
+        return stations.toString() + " stations · " + rox;
     }
 }
 
-class HomeViewDelegate extends WatchUi.BehaviorDelegate {
+class HomeViewDelegate extends WatchUi.Menu2InputDelegate {
+
     function initialize() {
-        BehaviorDelegate.initialize();
+        Menu2InputDelegate.initialize();
     }
 
-    function onSelect() as Boolean {
-        WatchUi.pushView(
-            new DivisionPickerView(),
-            new DivisionPickerDelegate(),
-            WatchUi.SLIDE_LEFT);
-        return true;
+    function onSelect(item as MenuItem) as Void {
+        var id = item.getId() as String;
+        if (id.equals("presets")) {
+            WatchUi.pushView(
+                new DivisionPickerView(),
+                new DivisionPickerDelegate(),
+                WatchUi.SLIDE_LEFT);
+            return;
+        }
+        if (id.find("tpl:") == 0) {
+            var rawId = id.substring(4, id.length());
+            var template = TemplateStore.findById(rawId);
+            if (template != null) {
+                var view = new ActiveWorkoutView(template);
+                var delegate = new ActiveWorkoutDelegate(view);
+                WatchUi.pushView(view, delegate, WatchUi.SLIDE_LEFT);
+            }
+        }
+    }
+
+    function onBack() as Void {
+        // Default behavior — close app on back from home.
     }
 }
