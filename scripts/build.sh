@@ -46,11 +46,17 @@ echo "🔨 Building for $DEVICE"
 echo "   SDK: $SDK_PATH"
 echo "   Output: $OUT_PRG"
 
+EXTRA_FLAGS=()
+if [[ "${UNIT_TEST:-0}" == "1" ]]; then
+    EXTRA_FLAGS+=("--unit-test")
+fi
+
 "$MONKEYC" \
     --jungles "$JUNGLE" \
     --device "$DEVICE" \
     --output "$OUT_PRG" \
     --private-key "$KEY" \
-    --warn
+    --warn \
+    "${EXTRA_FLAGS[@]}"
 
 echo "✅ Build succeeded: $OUT_PRG"
