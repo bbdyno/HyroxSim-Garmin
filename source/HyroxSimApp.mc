@@ -22,7 +22,7 @@ class HyroxSimApp extends Application.AppBase {
     }
 
     function getInitialView() as [Views] or [Views, InputDelegates] {
-        return [new HomeView()];
+        return [new HomeView(), new HomeViewDelegate()];
     }
 }
 

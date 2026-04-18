@@ -2,51 +2,53 @@
 //  HomeView.mc
 //  HyroxSimGarmin
 //
-//  Created by bbdyno on 4/18/26.
+//  Created by bbdyno on 4/19/26.
 //
 
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.WatchUi;
 
+// Landing screen: branded title + "Start" hint. SELECT opens the division
+// picker; from there the user chooses a preset which launches the engine.
 class HomeView extends WatchUi.View {
 
     function initialize() {
         View.initialize();
     }
 
-    function onLayout(dc as Dc) as Void {
-    }
-
-    function onShow() as Void {
-    }
-
-    function onUpdate(dc as Dc) as Void {
-        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
+    function onUpdate(dc as Graphics.Dc) as Void {
+        dc.setColor(Styles.COLOR_TEXT_PRIMARY, Styles.COLOR_BACKGROUND);
         dc.clear();
 
-        var width = dc.getWidth();
-        var height = dc.getHeight();
+        var w = dc.getWidth();
+        var h = dc.getHeight();
+        var cx = w / 2;
 
-        dc.setColor(0xFFD700, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(
-            width / 2,
-            height / 2 - 24,
-            Graphics.FONT_LARGE,
-            WatchUi.loadResource(Rez.Strings.HelloHyrox) as String,
-            Graphics.TEXT_JUSTIFY_CENTER
-        );
+        dc.setColor(Styles.COLOR_ACCENT, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(cx, h / 2 - 28, Graphics.FONT_LARGE,
+            "HyroxSim", Graphics.TEXT_JUSTIFY_CENTER);
 
-        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(
-            width / 2,
-            height / 2 + 8,
-            Graphics.FONT_SMALL,
-            WatchUi.loadResource(Rez.Strings.Subtitle) as String,
-            Graphics.TEXT_JUSTIFY_CENTER
-        );
+        dc.setColor(Styles.COLOR_TEXT_SECOND, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(cx, h / 2 + 6, Graphics.FONT_SMALL,
+            "HYROX Simulator", Graphics.TEXT_JUSTIFY_CENTER);
+
+        dc.setColor(Styles.COLOR_TEXT_TERTIARY, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(cx, h / 2 + 32, Graphics.FONT_XTINY,
+            "Press START", Graphics.TEXT_JUSTIFY_CENTER);
+    }
+}
+
+class HomeViewDelegate extends WatchUi.BehaviorDelegate {
+    function initialize() {
+        BehaviorDelegate.initialize();
     }
 
-    function onHide() as Void {
+    function onSelect() as Boolean {
+        WatchUi.pushView(
+            new DivisionPickerView(),
+            new DivisionPickerDelegate(),
+            WatchUi.SLIDE_LEFT);
+        return true;
     }
 }
