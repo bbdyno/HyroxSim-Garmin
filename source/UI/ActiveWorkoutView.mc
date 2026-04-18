@@ -27,12 +27,18 @@ import Toybox.WatchUi;
 class ActiveWorkoutView extends WatchUi.View {
 
     public var engine;           // WorkoutEngine
+    public var hrProvider;       // HeartRateProvider
+    public var recorder;         // ActivityRecorder
     private var _tickTimer;      // Toybox.Timer.Timer
 
     function initialize(template as Dictionary) {
         View.initialize();
         engine = new WorkoutEngine(template);
+        hrProvider = new HeartRateProvider(engine);
+        recorder = new ActivityRecorder();
         engine.start(ActiveWorkoutView.nowMs());
+        hrProvider.enable();
+        recorder.start();
     }
 
     function onShow() as Void {
@@ -50,6 +56,7 @@ class ActiveWorkoutView extends WatchUi.View {
     }
 
     function onTick() as Void {
+        hrProvider.sampleOnce();
         WatchUi.requestUpdate();
     }
 

@@ -55,6 +55,8 @@ class ActionMenuDelegate extends WatchUi.Menu2InputDelegate {
         }
         if (id.equals("end")) {
             engine.finish(nowMs);
+            view.hrProvider.disable();
+            view.recorder.stop();
             WatchUi.popView(WatchUi.SLIDE_DOWN);
             WatchUi.switchToView(
                 new ResultView(engine),

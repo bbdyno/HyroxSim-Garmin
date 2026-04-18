@@ -28,6 +28,8 @@ class ActiveWorkoutDelegate extends WatchUi.BehaviorDelegate {
         }
         if (EngineState.is(view.engine.state, EngineState.KIND_RUNNING)) {
             view.engine.advance(ActiveWorkoutView.nowMs());
+            // Mirror segment boundaries to Garmin Activity laps.
+            view.recorder.lap();
             WatchUi.requestUpdate();
         }
         return true;
