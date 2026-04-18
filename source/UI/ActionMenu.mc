@@ -5,6 +5,7 @@
 //  Created by bbdyno on 4/19/26.
 //
 
+import Toybox.Application;
 import Toybox.Lang;
 import Toybox.WatchUi;
 
@@ -57,6 +58,14 @@ class ActionMenuDelegate extends WatchUi.Menu2InputDelegate {
             engine.finish(nowMs);
             view.hrProvider.disable();
             view.recorder.stop();
+            // Serialize & queue for phone transmission.
+            var encoded = CompletedWorkoutCodec.encode(engine, "garmin");
+            var app = Application.getApp() as HyroxSimApp;
+            if (app.phoneHandler != null) {
+                app.phoneHandler.submitCompletedWorkout(encoded);
+            } else {
+                WorkoutStorage.enqueue(encoded);
+            }
             WatchUi.popView(WatchUi.SLIDE_DOWN);
             WatchUi.switchToView(
                 new ResultView(engine),

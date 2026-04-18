@@ -11,11 +11,15 @@ import Toybox.WatchUi;
 
 class HyroxSimApp extends Application.AppBase {
 
+    public var phoneHandler;    // PhoneMessageHandler singleton
+
     function initialize() {
         AppBase.initialize();
     }
 
     function onStart(state as Dictionary?) as Void {
+        phoneHandler = new PhoneMessageHandler();
+        phoneHandler.register();
     }
 
     function onStop(state as Dictionary?) as Void {
