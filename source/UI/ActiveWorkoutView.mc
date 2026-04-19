@@ -29,7 +29,8 @@ class ActiveWorkoutView extends WatchUi.View {
     public var engine;           // WorkoutEngine
     public var hrProvider;       // HeartRateProvider
     public var recorder;         // ActivityRecorder
-    public var goal;             // resolved goal Dictionary
+    public var goal;             // resolved goal Dictionary or null when free-tier
+    public var hasExplicitGoal;  // true only when phone-pushed goal is active
     private var _tickTimer;      // Toybox.Timer.Timer
 
     function initialize(template as Dictionary) {
@@ -37,7 +38,19 @@ class ActiveWorkoutView extends WatchUi.View {
         engine = new WorkoutEngine(template);
         hrProvider = new HeartRateProvider(engine);
         recorder = new ActivityRecorder();
-        goal = GoalStore.resolve(template);
+        // Only render delta/target UI when the phone has actually pushed a
+        // goal. Without pairing, the workout runs as a pure stopwatch —
+        // matches the Freemium 2-tier (RoxFit-style) approach.
+        var storedGoal = GoalStore.load();
+        if (storedGoal != null
+                && (storedGoal[GoalStore.DIVISION] as String).equals(
+                    template[WorkoutTemplate.DIVISION] as String)) {
+            goal = storedGoal;
+            hasExplicitGoal = true;
+        } else {
+            goal = null;
+            hasExplicitGoal = false;
+        }
         engine.start(ActiveWorkoutView.nowMs());
         hrProvider.enable();
         recorder.start();
@@ -108,12 +121,15 @@ class ActiveWorkoutView extends WatchUi.View {
                 "→ " + segmentLabel(next), Graphics.TEXT_JUSTIFY_CENTER);
         }
 
-        // Delta badge (top-right): cumulative delta vs target.
-        var delta = DeltaCalculator.totalDeltaMs(engine, goal, nowMs);
-        var deltaColor = delta > 0 ? Styles.COLOR_OVER : Styles.COLOR_UNDER;
-        dc.setColor(deltaColor, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(cx, h / 2 - 88, Graphics.FONT_XTINY,
-            Styles.formatDeltaMs(delta), Graphics.TEXT_JUSTIFY_CENTER);
+        // Delta badge (top-right): only rendered in paired/goal-bearing mode.
+        // Free-tier runs as a plain stopwatch — no delta display.
+        if (hasExplicitGoal && goal != null) {
+            var delta = DeltaCalculator.totalDeltaMs(engine, goal, nowMs);
+            var deltaColor = delta > 0 ? Styles.COLOR_OVER : Styles.COLOR_UNDER;
+            dc.setColor(deltaColor, Graphics.COLOR_TRANSPARENT);
+            dc.drawText(cx, h / 2 - 88, Graphics.FONT_XTINY,
+                Styles.formatDeltaMs(delta), Graphics.TEXT_JUSTIFY_CENTER);
+        }
 
         // Paused overlay
         if (EngineState.is(engine.state, EngineState.KIND_PAUSED)) {

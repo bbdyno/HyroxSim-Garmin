@@ -23,6 +23,12 @@ class HomeView extends WatchUi.Menu2 {
     }
 
     function _populate() as Void {
+        addItem(new MenuItem(
+            "HYROX Presets",
+            "9 divisions",
+            "presets",
+            null
+        ));
         var templates = TemplateStore.list();
         for (var i = 0; i < templates.size(); i += 1) {
             var t = templates[i] as Dictionary;
@@ -35,12 +41,16 @@ class HomeView extends WatchUi.Menu2 {
                 null
             ));
         }
-        addItem(new MenuItem(
-            "HYROX Presets",
-            "9 divisions",
-            "presets",
-            null
-        ));
+        // No custom templates and no prior phone handshake → show a
+        // gentle hint to drive users toward the companion app.
+        if (templates.size() == 0 && !PairingStore.isPaired()) {
+            addItem(new MenuItem(
+                "Install phone app",
+                "Custom workouts + goals",
+                "info:phone",
+                null
+            ));
+        }
     }
 
     function _subLabelFor(template as Dictionary) as String {
@@ -63,6 +73,11 @@ class HomeViewDelegate extends WatchUi.Menu2InputDelegate {
                 new DivisionPickerView(),
                 new DivisionPickerDelegate(),
                 WatchUi.SLIDE_LEFT);
+            return;
+        }
+        if (id.equals("info:phone")) {
+            // Info-only entry; no action. Future: push a dedicated view
+            // with pairing instructions + QR-like guidance.
             return;
         }
         if (id.find("tpl:") == 0) {
