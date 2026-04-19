@@ -8,14 +8,13 @@
 import Toybox.Lang;
 import Toybox.WatchUi;
 
-// Menu2-based landing. Shows (in order):
-//   1. User-pushed custom templates from iOS/Android (phone → TemplateStore)
-//   2. A "HYROX 프리셋" entry that drills into the 9-division picker
+// Menu2-based home. Shows:
+//   1. Saved templates pushed from phone (TemplateStore)
+//   2. "HYROX Presets" entry → DivisionPickerView
 //
-// Selecting any saved template launches ActiveWorkoutView with that
-// template (including `usesRoxZone=false` variants). Selecting the preset
-// entry pushes DivisionPickerView which builds `WorkoutTemplate.hyroxPreset`
-// on demand.
+// Labels are English — fenix7 default fonts render CJK as missing-glyph
+// diamonds. If/when a CJK-capable font is bundled, revisit per-language
+// strings.
 class HomeView extends WatchUi.Menu2 {
 
     function initialize() {
@@ -37,8 +36,8 @@ class HomeView extends WatchUi.Menu2 {
             ));
         }
         addItem(new MenuItem(
-            "HYROX 프리셋",
-            "9 디비전 중 선택",
+            "HYROX Presets",
+            "9 divisions",
             "presets",
             null
         ));
@@ -47,7 +46,7 @@ class HomeView extends WatchUi.Menu2 {
     function _subLabelFor(template as Dictionary) as String {
         var stations = WorkoutTemplate.stationCount(template);
         var rox = (template[WorkoutTemplate.USES_ROX_ZONE] as Boolean) ? "ROX on" : "ROX off";
-        return stations.toString() + " stations · " + rox;
+        return stations.toString() + " stations / " + rox;
     }
 }
 

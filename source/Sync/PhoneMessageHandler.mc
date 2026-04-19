@@ -41,8 +41,19 @@ class PhoneMessageHandler {
         var id = data[MessageProtocol.K_ID] as String;
 
         if (type.equals(MessageProtocol.T_HELLO)) {
+            // First successful hello unlocks the app (pairing gate). If the
+            // watch was showing PairingRequiredView it will remain on screen
+            // until the user presses SELECT to re-enter — we don't force-
+            // switch views here because the user may be mid-read.
+            var wasPaired = PairingStore.isPaired();
+            PairingStore.recordHello();
             _sendHelloAck(id);
             flushOutbox();
+            if (!wasPaired) {
+                // Optional UX: the companion app typically sends goal.set or
+                // template.upsert right after the initial hello, which
+                // triggers a natural UI refresh later.
+            }
             return;
         }
         if (type.equals(MessageProtocol.T_GOAL_SET)) {
