@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<resources>
+    <!-- Icon font built from Lucide SVGs (ISC license).
+         Regenerate via: cd tools/iconfont && node build.js
+         Codepoint map lives at tools/iconfont/codes.txt and mirrors
+         source/UI/IconFont.mc constants. -->
+    <font id="iconfont" filename="iconfont.fnt" antialias="true"/>
+</resources>
