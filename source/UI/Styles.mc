@@ -20,8 +20,10 @@ module Styles {
     const COLOR_RUN          = 0x007AFF;   // systemBlue
     const COLOR_ROX_ZONE     = 0xFF9500;   // systemOrange
     const COLOR_STATION      = 0xFFD700;   // gold
-    const COLOR_OVER         = 0xFF3B30;   // delta over target
-    const COLOR_UNDER        = 0xFFD700;   // delta under target (ahead)
+    const COLOR_OVER         = 0xFF3B30;   // delta > 0 (behind target)  — RED
+    const COLOR_UNDER        = 0x34C759;   // delta < 0 (ahead of target) — GREEN
+    const COLOR_HEART        = 0xFF3B30;   // HR highlight
+    const COLOR_SURFACE      = 0x1A1A1A;   // raised card surface (dark grey)
 
     function colorForSegmentType(type as String) as Number {
         if (type.equals(SegmentType.RUN))       { return COLOR_RUN; }
