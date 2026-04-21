@@ -8,6 +8,7 @@
 import Toybox.Activity;
 import Toybox.Graphics;
 import Toybox.Lang;
+import Toybox.Position;
 import Toybox.System;
 import Toybox.Time;
 import Toybox.WatchUi;
@@ -102,6 +103,8 @@ class ActiveWorkoutView extends WatchUi.View {
         var totElapsed = engine.totalElapsedMs(nowMs);
 
         var centerJust = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
+        var leftJust   = Graphics.TEXT_JUSTIFY_LEFT   | Graphics.TEXT_JUSTIFY_VCENTER;
+        var rightJust  = Graphics.TEXT_JUSTIFY_RIGHT  | Graphics.TEXT_JUSTIFY_VCENTER;
 
         // Vertical positions — fractions of screen height so layout scales
         // across FR265 / FR965 without absolute offsets.
@@ -136,15 +139,49 @@ class ActiveWorkoutView extends WatchUi.View {
         dc.drawText(cx, yTimer, Graphics.FONT_NUMBER_HOT,
             Styles.formatElapsedMs(segElapsed), centerJust);
 
-        // HR line — red heart glyph missing on default font, so use "BPM"
-        // suffix + red color for visual distinctiveness.
+        // HR + pace row. On Run segments we always show a pace slot (with
+        // "--" while GPS is still acquiring). Otherwise HR centered.
         var info = Activity.getActivityInfo();
         var bpm = info != null ? info.currentHeartRate : null;
-        if (bpm != null) {
-            dc.setColor(Styles.COLOR_HEART, Graphics.COLOR_TRANSPARENT);
-            dc.drawText(cx, yHR, Graphics.FONT_TINY,
-                bpm.toString() + " BPM", centerJust);
+        var app = getApp();
+        var speedMps = app.gpsSpeedMps;
+        var isRun = type.equals(SegmentType.RUN);
+        var showPace = isRun;
+        var paceStr;
+        if (isRun && speedMps != null && speedMps > 0.3 && app.gpsReady()) {
+            paceStr = _formatPace(speedMps) + " /km";
+        } else if (isRun) {
+            paceStr = "-- /km";
+        } else {
+            paceStr = "";
         }
+
+        var hrText = bpm != null ? bpm.toString() : "--";
+        var hrColor = bpm != null ? Styles.COLOR_HEART : Styles.COLOR_TEXT_TERTIARY;
+
+        if (showPace) {
+            _drawHRWithIcon(dc, (w * 0.28).toNumber(), yHR,
+                hrText, hrColor, Graphics.FONT_XTINY, leftJust);
+            var paceColor = app.gpsReady()
+                ? Styles.COLOR_TEXT_PRIMARY
+                : Styles.COLOR_TEXT_TERTIARY;
+            dc.setColor(paceColor, Graphics.COLOR_TRANSPARENT);
+            dc.drawText((w * 0.72).toNumber(), yHR, Graphics.FONT_XTINY,
+                paceStr, rightJust);
+        } else {
+            _drawHRWithIcon(dc, cx, yHR,
+                hrText, hrColor, Graphics.FONT_TINY, centerJust);
+        }
+
+        // GPS indicator — satellite icon above the delta, tinted by quality.
+        var gpsColor = app.gpsReady()
+            ? Styles.COLOR_UNDER                 // green when locked
+            : (app.gpsQuality >= 2
+                ? Styles.COLOR_ACCENT            // gold when poor
+                : Styles.COLOR_TEXT_TERTIARY);   // grey when no signal
+        dc.setColor(gpsColor, Graphics.COLOR_TRANSPARENT);
+        dc.drawText((w * 0.20).toNumber(), yDelta, IconFont.get(),
+            IconFont.SATELLITE, centerJust);
 
         // Total elapsed — secondary.
         dc.setColor(Styles.COLOR_TEXT_SECOND, Graphics.COLOR_TRANSPARENT);
@@ -249,5 +286,49 @@ class ActiveWorkoutView extends WatchUi.View {
 
     static function nowMs() as Long {
         return Time.now().value().toLong() * 1000l;
+    }
+
+    // Converts instantaneous speed (m/s) into "M:SS" pace per km.
+    // Caller is responsible for null / zero-speed filtering so this stays
+    // pure arithmetic and never crashes on divide-by-zero.
+    private function _formatPace(speedMps as Float) as String {
+        var secPerKm = (1000.0 / speedMps).toNumber();
+        var m = secPerKm / 60;
+        var s = secPerKm % 60;
+        return m.toString() + ":" + s.format("%02d");
+    }
+
+    // Draws "♥ 152" — heart icon + BPM value. The icon and the number
+    // use different fonts so they render crisply at their native sizes
+    // (icon font is rasterised at 28 px).
+    private function _drawHRWithIcon(
+            dc as Graphics.Dc,
+            anchorX as Number,
+            y as Number,
+            hrText as String,
+            hrColor as Number,
+            textFont,
+            just as Number) as Void {
+        var iconFont = IconFont.get();
+        var iconW = dc.getTextWidthInPixels(IconFont.HEART, iconFont);
+        var textW = dc.getTextWidthInPixels(hrText, textFont);
+        var gap = 6;
+        var totalW = iconW + gap + textW;
+
+        // Resolve left edge from caller justification.
+        var leftX;
+        if ((just & Graphics.TEXT_JUSTIFY_CENTER) != 0) {
+            leftX = anchorX - totalW / 2;
+        } else if ((just & Graphics.TEXT_JUSTIFY_RIGHT) != 0) {
+            leftX = anchorX - totalW;
+        } else {
+            leftX = anchorX;
+        }
+
+        dc.setColor(hrColor, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(leftX, y, iconFont, IconFont.HEART,
+            Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER);
+        dc.drawText(leftX + iconW + gap, y, textFont, hrText,
+            Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER);
     }
 }
