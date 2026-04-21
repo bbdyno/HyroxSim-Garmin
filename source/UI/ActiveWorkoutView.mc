@@ -5,6 +5,7 @@
 //  Created by bbdyno on 4/19/26.
 //
 
+import Toybox.Activity;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.System;
@@ -38,22 +39,24 @@ class ActiveWorkoutView extends WatchUi.View {
         engine = new WorkoutEngine(template);
         hrProvider = new HeartRateProvider(engine);
         recorder = new ActivityRecorder();
-        // Only render delta/target UI when the phone has actually pushed a
-        // goal. Without pairing, the workout runs as a pure stopwatch —
-        // matches the Freemium 2-tier (RoxFit-style) approach.
+        // Goal resolution: use phone-pushed goal if division matches, else
+        // fall back to PaceReference defaults so delta is always shown.
+        // `hasExplicitGoal` drives UI emphasis (bright red/green when paired
+        // vs dim grey when estimated).
         var storedGoal = GoalStore.load();
-        if (storedGoal != null
+        hasExplicitGoal = (storedGoal != null
                 && (storedGoal[GoalStore.DIVISION] as String).equals(
-                    template[WorkoutTemplate.DIVISION] as String)) {
-            goal = storedGoal;
-            hasExplicitGoal = true;
-        } else {
-            goal = null;
-            hasExplicitGoal = false;
-        }
+                    template[WorkoutTemplate.DIVISION] as String));
+        goal = GoalStore.resolve(template);
         engine.start(ActiveWorkoutView.nowMs());
         hrProvider.enable();
-        recorder.start();
+        // Only write to the Garmin Activity/FIT pipeline when the user has
+        // paired the companion app. Unpaired installs run as a private
+        // stopwatch — data stays on the watch and never surfaces in Garmin
+        // Connect.
+        if (PairingStore.isPaired()) {
+            recorder.start();
+        }
     }
 
     function onShow() as Void {
@@ -78,6 +81,7 @@ class ActiveWorkoutView extends WatchUi.View {
     function onUpdate(dc as Graphics.Dc) as Void {
         dc.setColor(Styles.COLOR_TEXT_PRIMARY, Styles.COLOR_BACKGROUND);
         dc.clear();
+        dc.setAntiAlias(true);
 
         var w = dc.getWidth();
         var h = dc.getHeight();
@@ -97,72 +101,138 @@ class ActiveWorkoutView extends WatchUi.View {
         var segElapsed = engine.segmentElapsedMs(nowMs);
         var totElapsed = engine.totalElapsedMs(nowMs);
 
-        // Top: segment label
+        var centerJust = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
+
+        // Vertical positions — fractions of screen height so layout scales
+        // across FR265 / FR965 without absolute offsets.
+        var yDelta  = (h * 0.12).toNumber();
+        var yLabel  = (h * 0.24).toNumber();
+        var yTimer  = (h * 0.48).toNumber();
+        var yHR     = (h * 0.68).toNumber();
+        var yTotal  = (h * 0.78).toNumber();
+        var yNext   = (h * 0.87).toNumber();
+        var yBar    = (h * 0.93).toNumber();
+
+        // Delta: always shown. Sign drives color — negative (ahead of target)
+        // is green, positive (behind) is red. No dim-for-estimate variant;
+        // whether the goal is phone-pushed or a PaceReference estimate is
+        // conveyed elsewhere (history screen) not here.
+        var delta = DeltaCalculator.totalDeltaMs(engine, goal, nowMs);
+        var deltaColor = delta > 0 ? Styles.COLOR_OVER : Styles.COLOR_UNDER;
+        dc.setColor(deltaColor, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(cx, yDelta, Graphics.FONT_XTINY,
+            Styles.formatDeltaMs(delta), centerJust);
+
+        // Segment label — colored by type, with short accent underline.
+        var label = segmentLabel(segment);
         dc.setColor(accent, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(cx, h / 2 - 68, Graphics.FONT_SMALL,
-            segmentLabel(segment), Graphics.TEXT_JUSTIFY_CENTER);
+        dc.drawText(cx, yLabel, Graphics.FONT_MEDIUM, label, centerJust);
+        var labelHalf = dc.getFontHeight(Graphics.FONT_MEDIUM) / 2;
+        dc.fillRectangle(cx - 32, yLabel + labelHalf + 3, 64, 2);
 
-        // Middle: segment elapsed (large)
+        // Main elapsed timer — FONT_NUMBER_HOT instead of THAI_HOT to leave
+        // vertical room for HR + total below on the round display.
         dc.setColor(Styles.COLOR_TEXT_PRIMARY, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(cx, h / 2 - 36, Graphics.FONT_NUMBER_MEDIUM,
-            Styles.formatElapsedMs(segElapsed), Graphics.TEXT_JUSTIFY_CENTER);
+        dc.drawText(cx, yTimer, Graphics.FONT_NUMBER_HOT,
+            Styles.formatElapsedMs(segElapsed), centerJust);
 
-        // Secondary: total time
+        // HR line — red heart glyph missing on default font, so use "BPM"
+        // suffix + red color for visual distinctiveness.
+        var info = Activity.getActivityInfo();
+        var bpm = info != null ? info.currentHeartRate : null;
+        if (bpm != null) {
+            dc.setColor(Styles.COLOR_HEART, Graphics.COLOR_TRANSPARENT);
+            dc.drawText(cx, yHR, Graphics.FONT_TINY,
+                bpm.toString() + " BPM", centerJust);
+        }
+
+        // Total elapsed — secondary.
         dc.setColor(Styles.COLOR_TEXT_SECOND, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(cx, h / 2 + 18, Graphics.FONT_SMALL,
-            "Total " + Styles.formatElapsedMs(totElapsed),
-            Graphics.TEXT_JUSTIFY_CENTER);
+        dc.drawText(cx, yTotal, Graphics.FONT_XTINY,
+            "TOTAL  " + Styles.formatElapsedMs(totElapsed), centerJust);
 
-        // Bottom: next segment preview
+        // Next segment preview — faded.
         var next = engine.nextSegment();
         if (next != null) {
             dc.setColor(Styles.COLOR_TEXT_TERTIARY, Graphics.COLOR_TRANSPARENT);
-            dc.drawText(cx, h / 2 + 46, Graphics.FONT_XTINY,
-                "→ " + segmentLabel(next), Graphics.TEXT_JUSTIFY_CENTER);
+            dc.drawText(cx, yNext, Graphics.FONT_XTINY,
+                "NEXT  " + segmentLabel(next), centerJust);
         }
 
-        // Delta badge (top-right): only rendered in paired/goal-bearing mode.
-        // Free-tier runs as a plain stopwatch — no delta display.
-        if (hasExplicitGoal && goal != null) {
-            var delta = DeltaCalculator.totalDeltaMs(engine, goal, nowMs);
-            var deltaColor = delta > 0 ? Styles.COLOR_OVER : Styles.COLOR_UNDER;
-            dc.setColor(deltaColor, Graphics.COLOR_TRANSPARENT);
-            dc.drawText(cx, h / 2 - 88, Graphics.FONT_XTINY,
-                Styles.formatDeltaMs(delta), Graphics.TEXT_JUSTIFY_CENTER);
-        }
+        _drawProgressBar(dc, w, yBar, accent);
 
-        // Paused overlay
+        // Paused overlay — covers HR/total/next all at once with a clear
+        // status so the user isn't confused by stale timers.
         if (EngineState.is(engine.state, EngineState.KIND_PAUSED)) {
+            dc.setColor(Styles.COLOR_BACKGROUND, Graphics.COLOR_TRANSPARENT);
+            dc.fillRectangle(0, yHR - 20, w, yBar - yHR + 20);
             dc.setColor(Styles.COLOR_OVER, Graphics.COLOR_TRANSPARENT);
-            dc.drawText(cx, h / 2 + 68, Graphics.FONT_TINY,
-                "PAUSED", Graphics.TEXT_JUSTIFY_CENTER);
+            dc.drawText(cx, (yHR + yNext) / 2, Graphics.FONT_MEDIUM,
+                "PAUSED", centerJust);
         }
     }
 
+    // Horizontal progress bar — how many of the N segments are done (idx+0.5
+    // contribution for the current segment to give visible motion even when
+    // between completed boundaries). Uses the CURRENT segment's accent color
+    // so the whole screen stays visually tied to the active phase.
+    private function _drawProgressBar(
+            dc as Graphics.Dc,
+            w as Number,
+            y as Number,
+            accent as Number) as Void {
+        var segs = engine.template[WorkoutTemplate.SEGMENTS] as Array<Dictionary>;
+        var n = segs.size();
+        if (n == 0) { return; }
+
+        var idx = engine.currentSegmentIndex();
+        if (idx == null) { idx = 0; }
+        var frac = (idx.toFloat() + 0.5) / n.toFloat();
+        if (frac < 0.0) { frac = 0.0; }
+        if (frac > 1.0) { frac = 1.0; }
+
+        var barW = (w * 0.62).toNumber();
+        var barH = 4;
+        var barX = (w - barW) / 2;
+
+        dc.setColor(Styles.COLOR_SURFACE, Graphics.COLOR_TRANSPARENT);
+        dc.fillRoundedRectangle(barX, y, barW, barH, 2);
+
+        var fillW = (barW * frac).toNumber();
+        if (fillW < 4) { fillW = 4; }
+        dc.setColor(accent, Graphics.COLOR_TRANSPARENT);
+        dc.fillRoundedRectangle(barX, y, fillW, barH, 2);
+    }
+
     function _drawFinished(dc as Graphics.Dc, cx as Number, h as Number) as Void {
+        var centerJust = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
         dc.setColor(Styles.COLOR_ACCENT, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(cx, h / 2 - 24, Graphics.FONT_MEDIUM,
-            "FINISHED", Graphics.TEXT_JUSTIFY_CENTER);
+        dc.drawText(cx, (h * 0.26).toNumber(), Graphics.FONT_MEDIUM,
+            "FINISHED", centerJust);
+        // Gold underline for consistency with in-workout label.
+        dc.fillRectangle(cx - 40, (h * 0.26).toNumber() + dc.getFontHeight(Graphics.FONT_MEDIUM) / 2 + 2, 80, 2);
+
         dc.setColor(Styles.COLOR_TEXT_PRIMARY, Graphics.COLOR_TRANSPARENT);
         var total = engine.totalElapsedMs(ActiveWorkoutView.nowMs());
-        dc.drawText(cx, h / 2 + 4, Graphics.FONT_NUMBER_MEDIUM,
-            Styles.formatElapsedMs(total), Graphics.TEXT_JUSTIFY_CENTER);
-        dc.setColor(Styles.COLOR_TEXT_SECOND, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(cx, h / 2 + 40, Graphics.FONT_XTINY,
-            "Press BACK", Graphics.TEXT_JUSTIFY_CENTER);
+        dc.drawText(cx, (h * 0.54).toNumber(), Graphics.FONT_NUMBER_THAI_HOT,
+            Styles.formatElapsedMs(total), centerJust);
+
+        dc.setColor(Styles.COLOR_TEXT_TERTIARY, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(cx, (h * 0.84).toNumber(), Graphics.FONT_XTINY,
+            "PRESS BACK", centerJust);
     }
 
     function segmentLabel(segment as Dictionary) as String {
         var type = segment[WorkoutSegment.TYPE] as String;
         if (type.equals(SegmentType.STATION)) {
             var kind = segment[WorkoutSegment.STATION_KIND] as String;
-            return StationKind.displayName(kind);
+            return StationKind.displayName(kind).toUpper();
         }
         if (type.equals(SegmentType.ROX_ZONE)) {
-            return "ROX Zone";
+            return "ROX ZONE";
         }
         // Run: include index (1/8 based on run count so far)
-        return "Run " + _runCounter(segment) + "/8";
+        return "RUN " + _runCounter(segment) + "/8";
     }
 
     function _runCounter(currentSegment as Dictionary) as String {
