@@ -30,7 +30,8 @@ class HyroxSimApp extends Application.AppBase {
         // goal deltas, phone history sync) are naturally gated by whether
         // the phone has pushed data — the watch never fakes a goal or template.
         // See PairingStore / GoalStore / TemplateStore for individual checks.
-        return [new HomeView(), new HomeViewDelegate()];
+        var home = new HomeView();
+        return [home, new HomeViewDelegate(home)];
     }
 }
 

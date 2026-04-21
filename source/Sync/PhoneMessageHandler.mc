@@ -105,6 +105,7 @@ class PhoneMessageHandler {
         if (payload == null) { return; }
         if (payload[WorkoutTemplate.ID] == null) { return; }
         TemplateStore.upsert(payload);
+        HomeViewRegistry.refreshIfVisible();
     }
 
     function _handleTemplateDelete(payload as Dictionary) as Void {
@@ -112,6 +113,7 @@ class PhoneMessageHandler {
         var id = payload[WorkoutTemplate.ID] as String;
         if (id == null) { return; }
         TemplateStore.remove(id);
+        HomeViewRegistry.refreshIfVisible();
     }
 
     function _handleGoalSet(payload as Dictionary) as Void {
