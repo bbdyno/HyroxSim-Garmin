@@ -29,15 +29,24 @@ class ActiveWorkoutDelegate extends WatchUi.BehaviorDelegate {
         }
         if (EngineState.is(view.engine.state, EngineState.KIND_RUNNING)) {
             view.engine.advance(ActiveWorkoutView.nowMs());
-            // Mirror segment boundaries to Garmin Activity laps. The watch
-            // OS announces these as "Lap N" (TTS string is not Connect IQ
-            // configurable as of SDK 9.1), so we layer a type-specific
-            // vibration pattern below for tactile distinction between
-            // Run / ROX Zone / Station.
-            view.recorder.lap();
+            // NOTE: deliberately NOT calling view.recorder.lap() here.
+            // Garmin OS speaks "Lap N" via TTS on every lap mark and CIQ
+            // has no API to suppress just the number. We trade per-lap FIT
+            // splits (still recoverable from our own SegmentRecord buffer)
+            // for a quieter audio experience. Segment cue is delivered by
+            // the tone + type-specific vibration below.
+            Attention.playTone(Attention.TONE_INTERVAL_ALERT);
             _vibrateForCurrentSegment();
             WatchUi.requestUpdate();
         }
+        return true;
+    }
+
+    // Touchscreen tap would otherwise invoke onSelect and advance the
+    // segment. Consuming the event here locks segment advancement to the
+    // physical SELECT button only — protects against accidental wrist
+    // bumps and sweat drops during heavy movement.
+    function onTap(event as WatchUi.ClickEvent) as Boolean {
         return true;
     }
 
