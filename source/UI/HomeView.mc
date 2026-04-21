@@ -127,17 +127,21 @@ class HomeView extends WatchUi.View {
 
         // HYROX wordmark + underline + subtitle
         dc.setColor(Styles.COLOR_ACCENT, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(cx, (h * 0.17).toNumber(), Graphics.FONT_LARGE, "HYROX", centerJust);
+        dc.drawText(cx, (h * 0.14).toNumber(), Graphics.FONT_LARGE, "HYROX", centerJust);
         var lbh = dc.getFontHeight(Graphics.FONT_LARGE) / 2;
-        dc.fillRectangle(cx - 42, (h * 0.17).toNumber() + lbh + 3, 84, 2);
-        dc.setColor(Styles.COLOR_TEXT_TERTIARY, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(cx, (h * 0.29).toNumber(), Graphics.FONT_XTINY, "SIMULATOR", centerJust);
+        dc.fillRectangle(cx - 42, (h * 0.14).toNumber() + lbh + 3, 84, 2);
+        // GPS readiness replaces the static "SIMULATOR" subtitle — it's
+        // the one piece of pre-workout state that actually matters.
+        _drawGpsStatus(dc, cx, (h * 0.23).toNumber());
+
+        // Up chevron — gold when a previous card exists, dim tertiary otherwise.
+        _drawChevron(dc, cx, (h * 0.31).toNumber(), true, _selected > 0);
 
         // Focused card
         if (_items.size() > 0) {
             var item = _items[_selected] as Dictionary;
             var cardX = (w * 0.10).toNumber();
-            var cardY = (h * 0.38).toNumber();
+            var cardY = (h * 0.37).toNumber();
             var cardW = w - 2 * cardX;
             var cardH = (h * 0.28).toNumber();
 
@@ -157,12 +161,76 @@ class HomeView extends WatchUi.View {
                 item[:subtitle] as String, centerJust);
         }
 
-        // START hint
-        dc.setColor(Styles.COLOR_ACCENT, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(cx, (h * 0.76).toNumber(), Graphics.FONT_XTINY, "START ▸", centerJust);
+        // Down chevron + next-item peek (stronger scroll affordance than dots alone).
+        _drawChevron(dc, cx, (h * 0.71).toNumber(), false,
+            _selected < _items.size() - 1);
+        _drawNextPeek(dc, cx, (h * 0.78).toNumber());
 
-        // Dot indicators
-        _drawDots(dc, cx, (h * 0.88).toNumber());
+        // START hint + dot indicators
+        dc.setColor(Styles.COLOR_ACCENT, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(cx, (h * 0.85).toNumber(), Graphics.FONT_XTINY, "START ▸", centerJust);
+        _drawDots(dc, cx, (h * 0.92).toNumber());
+    }
+
+    // Satellite icon + short status string. Green when GPS has locked
+    // (USABLE/GOOD quality), gold while acquiring (POOR), grey otherwise.
+    private function _drawGpsStatus(
+            dc as Graphics.Dc,
+            cx as Number,
+            y as Number) as Void {
+        var app = getApp();
+        var color;
+        var text;
+        if (app.gpsReady()) {
+            color = Styles.COLOR_UNDER;   // green
+            text = "GPS READY";
+        } else if (app.gpsQuality >= 2) {
+            color = Styles.COLOR_ACCENT;  // gold
+            text = "GPS ACQUIRING";
+        } else {
+            color = Styles.COLOR_TEXT_TERTIARY;
+            text = "GPS SEARCHING";
+        }
+        var iconFont = IconFont.get();
+        var iconW = dc.getTextWidthInPixels(IconFont.SATELLITE, iconFont);
+        var textW = dc.getTextWidthInPixels(text, Graphics.FONT_XTINY);
+        var gap = 6;
+        var leftX = cx - (iconW + gap + textW) / 2;
+        dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(leftX, y, iconFont, IconFont.SATELLITE,
+            Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER);
+        dc.drawText(leftX + iconW + gap, y, Graphics.FONT_XTINY, text,
+            Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER);
+    }
+
+    // Draws a chevron arrow (up if isUp else down) using the icon font.
+    // `active` colors it gold to indicate "more items in that direction";
+    // otherwise tertiary grey as a passive edge marker.
+    private function _drawChevron(
+            dc as Graphics.Dc,
+            cx as Number,
+            y as Number,
+            isUp as Boolean,
+            active as Boolean) as Void {
+        var color = active ? Styles.COLOR_ACCENT : Styles.COLOR_TEXT_TERTIARY;
+        dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(cx, y, IconFont.get(),
+            isUp ? IconFont.CHEVRON_UP : IconFont.CHEVRON_DOWN,
+            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+    }
+
+    // Tiny faded title preview of the next item so the user sees what's
+    // coming when pressing DOWN. Nothing rendered on the last card.
+    private function _drawNextPeek(
+            dc as Graphics.Dc,
+            cx as Number,
+            y as Number) as Void {
+        if (_selected >= _items.size() - 1) { return; }
+        var nextItem = _items[_selected + 1] as Dictionary;
+        dc.setColor(Styles.COLOR_TEXT_TERTIARY, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(cx, y, Graphics.FONT_XTINY,
+            nextItem[:title] as String,
+            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
     }
 
     private function _drawDots(dc as Graphics.Dc, cx as Number, y as Number) as Void {
