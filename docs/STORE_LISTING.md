@@ -6,13 +6,7 @@
 
 ## App Name (제목)
 
-현재 `resources/strings/strings.xml`에 `HyroxSim`으로 설정. 브랜드를 더 강조하고 싶으면 다음 중 선택:
-
-- `HyroxSim` (현재)
-- `HYROX Sim` ← 추천 (브랜드명 대문자 강조 + 공백)
-- `Hyrox Race Sim`
-
-App Name을 바꾸려면 `resources/strings/strings.xml`의 `AppName` 값을 수정해 재빌드.
+`HyroxSim` (`resources/strings/strings.xml`의 `AppName`).
 
 ---
 
@@ -147,6 +141,16 @@ Initial release.
 
 ---
 
+## URLs & Contact
+
+| 필드 | 값 |
+|---|---|
+| Privacy Policy URL | https://hyroxsim-ios.web.app/privacy.html |
+| Support URL (1차) | https://hyroxsim-ios.web.app |
+| Support Email (2차) | della.kimko@gmail.com |
+
+---
+
 ## Required Asset Checklist
 
 | 파일 | 위치 | 사이즈 |
@@ -154,15 +158,14 @@ Initial release.
 | `.iq` 패키지 | `bin/HyroxSim.iq` | — |
 | 스토어 마케팅 아이콘 | `assets/store_icon.png` | 256×256 PNG |
 | 스크린샷 (기기별) | (다음 단계에서 캡처) | fr265 360×360, fr965 454×454 |
-| Privacy Policy URL | iOS 앱 정책 재사용 | — |
-| Support Email / URL | 사용자 문의 채널 | — |
 
 ---
 
 ## 주의
 
-- HYROX 상표 사용에 대한 법적 리스크가 있을 수 있습니다. 가민 검수팀이
-  거부할 가능성에 대비해 "Hybrid Race Sim", "8x Station Sim" 같은
-  대체 이름도 준비해두는 것을 권장합니다.
+- HYROX 상표 사용에 대한 법적 리스크 인지 — 가민 검수팀이 단어
+  사용 자체를 문제 삼는다면 그 시점에 대응. 일단 그대로 제출.
 - iOS 동반 앱이 App Store에 먼저 등록돼야 사용자 흐름이 자연스럽습니다.
-- Privacy Policy URL이 살아있는 페이지여야 검수 통과됩니다.
+- Privacy Policy URL이 살아있는 페이지여야 검수 통과됩니다 — 제출 전
+  https://hyroxsim-ios.web.app/privacy.html 에 실제 정책 페이지가
+  올라와 있는지 한 번 확인.
