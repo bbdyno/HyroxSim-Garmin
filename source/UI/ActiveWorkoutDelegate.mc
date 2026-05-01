@@ -16,22 +16,43 @@ import Toybox.WatchUi;
 class ActiveWorkoutDelegate extends WatchUi.BehaviorDelegate {
 
     public var view;    // ActiveWorkoutView
-    private var _lastTapMs as Long;  // wall-clock ms of last touchscreen tap
+
+    // Wall-clock ms of last physical SELECT (KEY_ENTER) press. onSelect()
+    // refuses to advance unless this is recent — flips the previous tap-
+    // blacklist into a key-whitelist so any touch dispatch path the
+    // firmware happens to use (center, edges, bottom area) still can't
+    // trigger advancement.
+    private var _lastEnterMs as Long;
 
     function initialize(v as ActiveWorkoutView) {
         BehaviorDelegate.initialize();
         view = v;
-        _lastTapMs = 0l;
+        _lastEnterMs = 0l;
+    }
+
+    // InputDelegate hook fired when a physical key is first pressed —
+    // before BehaviorDelegate maps the released event to onSelect. We do
+    // NOT consume the event (return false) so BehaviorDelegate's normal
+    // mapping still runs and onSelect fires. Touchscreen taps never come
+    // through here, which is the entire point.
+    function onKeyPressed(event as WatchUi.KeyEvent) as Boolean {
+        if (event.getKey() == WatchUi.KEY_ENTER) {
+            _lastEnterMs = ActiveWorkoutView.nowMs();
+        }
+        return false;
     }
 
     function onSelect() as Boolean {
-        // Belt-and-suspenders: even with onTap returning true, some firmware
-        // paths route a screen tap straight to onSelect. If a tap fired in
-        // the last 250 ms, treat this onSelect as touch-derived and ignore.
         var nowTs = ActiveWorkoutView.nowMs();
-        if (_lastTapMs != 0l && nowTs - _lastTapMs < 250l) {
+        // Whitelist: only advance if the physical SELECT button was just
+        // pressed. If we got here without a recent KEY_ENTER, this onSelect
+        // came from a touch dispatch (center tap, edge tap, bottom-area
+        // tap, swipe-to-select on certain firmware) — block silently.
+        if (_lastEnterMs == 0l || nowTs - _lastEnterMs > 500l) {
             return true;
         }
+        _lastEnterMs = 0l;  // consume
+
         if (view.engine.isFinished()) {
             WatchUi.popView(WatchUi.SLIDE_RIGHT);
             return true;
@@ -51,28 +72,13 @@ class ActiveWorkoutDelegate extends WatchUi.BehaviorDelegate {
         return true;
     }
 
-    // Touchscreen tap would otherwise invoke onSelect and advance the
-    // segment. Consuming the event here locks segment advancement to the
-    // physical SELECT button only — protects against accidental wrist
-    // bumps and sweat drops during heavy movement. Also stamp the time so
-    // onSelect can filter any tap that still leaks through to the behavior
-    // layer on certain firmware revisions.
-    function onTap(event as WatchUi.ClickEvent) as Boolean {
-        _lastTapMs = ActiveWorkoutView.nowMs();
-        return true;
-    }
-
-    // Same defensive blocking for hold/release click events — some round
-    // touch firmwares dispatch these instead of onTap on a long press.
-    function onHold(event as WatchUi.ClickEvent) as Boolean {
-        _lastTapMs = ActiveWorkoutView.nowMs();
-        return true;
-    }
-
-    function onRelease(event as WatchUi.ClickEvent) as Boolean {
-        _lastTapMs = ActiveWorkoutView.nowMs();
-        return true;
-    }
+    // Consume every touchscreen click variant. Even though the whitelist
+    // in onSelect already protects advancement, returning true here keeps
+    // higher-level OS behaviors (focus rings, ripple feedback, edge-tap
+    // glance shortcuts) from firing on any region of the screen.
+    function onTap(event as WatchUi.ClickEvent) as Boolean { return true; }
+    function onHold(event as WatchUi.ClickEvent) as Boolean { return true; }
+    function onRelease(event as WatchUi.ClickEvent) as Boolean { return true; }
 
     private function _vibrateForCurrentSegment() as Void {
         var seg = view.engine.currentSegment();
