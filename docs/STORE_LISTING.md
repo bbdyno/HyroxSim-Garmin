@@ -157,7 +157,29 @@ Initial release.
 |---|---|---|
 | `.iq` 패키지 | `bin/HyroxSim.iq` | — |
 | 스토어 마케팅 아이콘 | `assets/store_icon.png` | 500×500 PNG |
-| 스크린샷 (기기별) | (다음 단계에서 캡처) | fr265 360×360, fr965 454×454 |
+| 스크린샷 (기기별) | `assets/screenshots/{device}/` | fr265 360×360, fr965 454×454 |
+
+---
+
+## 스크린샷 캡처 가이드
+
+**시뮬레이터 캡처 단축키**: `Cmd+S` (Connect IQ 시뮬레이터 메뉴 → File → Save Screenshot)
+저장 경로를 `assets/screenshots/{기기}/{시나리오}.png` 패턴으로.
+
+**캡처할 5개 시나리오** (fr265, fr965 각각):
+
+| # | 화면 | 진입 방법 | 파일명 |
+|---|---|---|---|
+| 1 | Home (HYROX PRESETS 포커스) | 시작 직후 | `01_home.png` |
+| 2 | Division Picker (Mens Open Single 하이라이트) | 홈 → SELECT | `02_division.png` |
+| 3 | Rox Zone 토글 (ON 하이라이트) | 디비전 선택 후 | `03_rox_toggle.png` |
+| 4 | Active Workout — Run 1/8 진행 중 (HR + GPS pace + delta 보임) | 시작 후 ~30s, GPS 잡힌 상태 | `04_active_run.png` |
+| 5 | Result (Finished + 세그먼트 리스트) | ActionMenu → End workout | `05_result.png` |
+
+**시뮬레이터 데이터 주입 (Run 화면을 풍부하게 보이려면)**
+- Simulation → Sensors → Heart Rate → 142 (예시)
+- Simulation → Position → 위경도 + 속도 입력 → GPS pace 표시됨
+- Simulation → Time → Time Compression 활성화하면 시간 빠르게 흘러감
 
 ---
 
