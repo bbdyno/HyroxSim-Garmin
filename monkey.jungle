@@ -3,5 +3,10 @@ project.manifest = manifest.xml
 base.sourcePath = source
 base.resourcePath = resources
 
-# Device-specific overrides can be added here later, e.g.:
-# fr965.resourcePath = $(fr965.resourcePath);resources-round-454
+# Per-device launcher icon overrides. The default `resources/drawables/`
+# ships a 65×65 icon (correct for fr965 + fenix847mm). Devices with a
+# different launcher size pull their override from a `resources-<device>/`
+# folder so monkeyc doesn't auto-scale and emit a fitness warning.
+fr265.resourcePath        = $(base.resourcePath);resources-fr265
+fenix7.resourcePath       = $(base.resourcePath);resources-fenix7
+vivoactive5.resourcePath  = $(base.resourcePath);resources-vivoactive5

@@ -7,6 +7,8 @@ bin/
 # Developer keys (never commit)
 developer_key.pem
 developer_key.der
+developer_key_release.pem
+developer_key_release.der
 
 # macOS
 .DS_Store
