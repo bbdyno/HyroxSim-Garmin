@@ -272,16 +272,24 @@ class ActiveWorkoutView extends WatchUi.View {
         return "RUN " + _runCounter(segment) + "/8";
     }
 
-    function _runCounter(currentSegment as Dictionary) as String {
+    function _runCounter(targetSegment as Dictionary) as String {
+        // Count run segments up to and including the segment we're
+        // labelling — NOT the engine's current index. Using currentIndex
+        // here breaks the "NEXT" preview, because it would label the
+        // upcoming run with the previous run's number.
         var segs = engine.template[WorkoutTemplate.SEGMENTS] as Array<Dictionary>;
-        var idx = engine.currentSegmentIndex();
-        if (idx == null) { return "?"; }
+        var targetId = targetSegment[WorkoutSegment.ID];
         var count = 0;
-        for (var i = 0; i <= idx; i += 1) {
-            var t = (segs[i] as Dictionary)[WorkoutSegment.TYPE] as String;
-            if (t.equals(SegmentType.RUN)) { count += 1; }
+        for (var i = 0; i < segs.size(); i += 1) {
+            var s = segs[i] as Dictionary;
+            if ((s[WorkoutSegment.TYPE] as String).equals(SegmentType.RUN)) {
+                count += 1;
+            }
+            if (s[WorkoutSegment.ID].equals(targetId)) {
+                return count.toString();
+            }
         }
-        return count.toString();
+        return "?";
     }
 
     static function nowMs() as Long {
