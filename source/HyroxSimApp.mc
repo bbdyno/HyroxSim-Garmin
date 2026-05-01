@@ -9,6 +9,7 @@ import Toybox.Activity;
 import Toybox.Application;
 import Toybox.Lang;
 import Toybox.Position;
+import Toybox.Sensor;
 import Toybox.Timer;
 import Toybox.WatchUi;
 
@@ -49,6 +50,12 @@ class HyroxSimApp extends Application.AppBase {
             _gpsPollTimer.stop();
             _gpsPollTimer = null;
         }
+        // Defensive sensor teardown. ActiveWorkoutView.onHide is the
+        // primary cleanup site, but force-kill / low-bat shutdown can
+        // skip it. A leaked HR sensor subscription keeps the watch in
+        // "in workout" state past app exit and contributes to the
+        // system activity menu feeling unresponsive.
+        Sensor.setEnabledSensors([] as Array<SensorType>);
     }
 
     // Spell out the constellation set rather than passing the bare
