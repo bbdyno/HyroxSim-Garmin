@@ -45,15 +45,15 @@ class PhoneMessageHandler {
             // watch was showing PairingRequiredView it will remain on screen
             // until the user presses SELECT to re-enter — we don't force-
             // switch views here because the user may be mid-read.
-            var wasPaired = PairingStore.isPaired();
             PairingStore.recordHello();
             _sendHelloAck(id);
             flushOutbox();
-            if (!wasPaired) {
-                // Optional UX: the companion app typically sends goal.set or
-                // template.upsert right after the initial hello, which
-                // triggers a natural UI refresh later.
-            }
+            // Repaint home so the "PAIR PHONE APP" hint flips to the actual
+            // paired state immediately. Without this the storage flag is set
+            // but the visible card stays stale until the user navigates away
+            // and back. Subsequent hellos are idempotent and a redundant
+            // repaint is cheap.
+            HomeViewRegistry.refreshIfVisible();
             return;
         }
         if (type.equals(MessageProtocol.T_GOAL_SET)) {

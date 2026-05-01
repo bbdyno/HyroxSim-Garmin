@@ -16,19 +16,28 @@ import Toybox.WatchUi;
 class ActiveWorkoutDelegate extends WatchUi.BehaviorDelegate {
 
     public var view;    // ActiveWorkoutView
+    private var _lastTapMs as Long;  // wall-clock ms of last touchscreen tap
 
     function initialize(v as ActiveWorkoutView) {
         BehaviorDelegate.initialize();
         view = v;
+        _lastTapMs = 0l;
     }
 
     function onSelect() as Boolean {
+        // Belt-and-suspenders: even with onTap returning true, some firmware
+        // paths route a screen tap straight to onSelect. If a tap fired in
+        // the last 250 ms, treat this onSelect as touch-derived and ignore.
+        var nowTs = ActiveWorkoutView.nowMs();
+        if (_lastTapMs != 0l && nowTs - _lastTapMs < 250l) {
+            return true;
+        }
         if (view.engine.isFinished()) {
             WatchUi.popView(WatchUi.SLIDE_RIGHT);
             return true;
         }
         if (EngineState.is(view.engine.state, EngineState.KIND_RUNNING)) {
-            view.engine.advance(ActiveWorkoutView.nowMs());
+            view.engine.advance(nowTs);
             // NOTE: deliberately NOT calling view.recorder.lap() here.
             // Garmin OS speaks "Lap N" via TTS on every lap mark and CIQ
             // has no API to suppress just the number. We trade per-lap FIT
@@ -45,8 +54,23 @@ class ActiveWorkoutDelegate extends WatchUi.BehaviorDelegate {
     // Touchscreen tap would otherwise invoke onSelect and advance the
     // segment. Consuming the event here locks segment advancement to the
     // physical SELECT button only — protects against accidental wrist
-    // bumps and sweat drops during heavy movement.
+    // bumps and sweat drops during heavy movement. Also stamp the time so
+    // onSelect can filter any tap that still leaks through to the behavior
+    // layer on certain firmware revisions.
     function onTap(event as WatchUi.ClickEvent) as Boolean {
+        _lastTapMs = ActiveWorkoutView.nowMs();
+        return true;
+    }
+
+    // Same defensive blocking for hold/release click events — some round
+    // touch firmwares dispatch these instead of onTap on a long press.
+    function onHold(event as WatchUi.ClickEvent) as Boolean {
+        _lastTapMs = ActiveWorkoutView.nowMs();
+        return true;
+    }
+
+    function onRelease(event as WatchUi.ClickEvent) as Boolean {
+        _lastTapMs = ActiveWorkoutView.nowMs();
         return true;
     }
 

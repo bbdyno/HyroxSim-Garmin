@@ -24,6 +24,7 @@ class ActionMenu extends WatchUi.Menu2 {
             addItem(new MenuItem("Resume", null, "resume", null));
         }
         addItem(new MenuItem("End workout", "Save & exit", "end", null));
+        addItem(new MenuItem("Discard", "Exit, don't save", "discard", null));
         addItem(new MenuItem("Cancel", null, "cancel", null));
     }
 }
@@ -71,6 +72,16 @@ class ActionMenuDelegate extends WatchUi.Menu2InputDelegate {
                 new ResultView(engine),
                 new ResultViewDelegate(),
                 WatchUi.SLIDE_LEFT);
+            return;
+        }
+        if (id.equals("discard")) {
+            // Abort path: drop the FIT session, skip codec/storage entirely
+            // so neither Garmin Connect nor the phone outbox sees this run.
+            engine.finish(nowMs);
+            view.hrProvider.disable();
+            view.recorder.discard();
+            WatchUi.popView(WatchUi.SLIDE_DOWN);  // close ActionMenu
+            WatchUi.popView(WatchUi.SLIDE_RIGHT); // close ActiveWorkoutView → home
             return;
         }
         // cancel
