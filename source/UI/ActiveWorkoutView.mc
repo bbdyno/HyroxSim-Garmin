@@ -72,6 +72,28 @@ class ActiveWorkoutView extends WatchUi.View {
             _tickTimer.stop();
             _tickTimer = null;
         }
+        // Idempotent cleanup. ActionMenu's End/Discard already disable
+        // these, so we double-call here only to catch the natural-finish
+        // path — segment-by-segment advance to completion + SELECT/BACK
+        // pops the view without going through the menu. Without this
+        // the FIT session and HR sensor stay active and crash the next
+        // workout's createSession call.
+        hrProvider.disable();
+        if (recorder.isActive()) {
+            recorder.stop();
+            // Natural finish also needs to reach the phone outbox; the
+            // menu's End path encodes there, but BACK after FINISHED
+            // would otherwise drop the run on the floor.
+            if (engine.isFinished()) {
+                var encoded = CompletedWorkoutCodec.encode(engine, "garmin");
+                var app = getApp();
+                if (app.phoneHandler != null) {
+                    app.phoneHandler.submitCompletedWorkout(encoded);
+                } else {
+                    WorkoutStorage.enqueue(encoded);
+                }
+            }
+        }
     }
 
     function onTick() as Void {
