@@ -156,7 +156,7 @@ Initial release.
 | 파일 | 위치 | 사이즈 |
 |---|---|---|
 | `.iq` 패키지 | `bin/HyroxSim.iq` | — |
-| 스토어 마케팅 아이콘 | `assets/store_icon.png` | 256×256 PNG |
+| 스토어 마케팅 아이콘 | `assets/store_icon.png` | 500×500 PNG |
 | 스크린샷 (기기별) | (다음 단계에서 캡처) | fr265 360×360, fr965 454×454 |
 
 ---
