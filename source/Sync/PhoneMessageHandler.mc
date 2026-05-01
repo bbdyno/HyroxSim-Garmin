@@ -151,7 +151,7 @@ class PhoneMessageHandler {
             echoId,
             {
                 "device" => System.getDeviceSettings().partNumber,
-                "appVersion" => "0.1.0"
+                "appVersion" => "1.0.0"
             });
         _transmit(env);
     }
