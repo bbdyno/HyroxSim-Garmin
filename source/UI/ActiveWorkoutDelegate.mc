@@ -92,7 +92,12 @@ class ActiveWorkoutDelegate extends WatchUi.BehaviorDelegate {
                 new Attention.VibeProfile(100, 180)
             ];
         } else if (type.equals(SegmentType.ROX_ZONE)) {
-            pattern = [new Attention.VibeProfile(60, 250)];
+            // Single long pulse at full strength — keeps the ROX cue
+            // visually/haptically distinct from Run (double) and Station
+            // (five-pulse) patterns while still being noticeable. The
+            // previous strength=60 single pulse was too subtle and read
+            // as "no feedback" on a moving wrist.
+            pattern = [new Attention.VibeProfile(100, 350)];
         } else {
             pattern = [
                 new Attention.VibeProfile(100, 140),
