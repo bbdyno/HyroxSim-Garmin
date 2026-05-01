@@ -35,6 +35,11 @@ module MessageProtocol {
     const T_WORKOUT_COMPLETED   = "workout.completed";
     const T_LIVE_STATE          = "live.state";
     const T_ACK                 = "ack";
+    // Watch app boot ping. Equivalent to hello.ack semantically — tells the
+    // phone "I'm running, push templates and goals". Needed because iOS may
+    // never emit `hello` if it was already foreground+BLE-connected when
+    // the watch app opened, leaving the watch with stale Application.Storage.
+    const T_SYNC_REQUEST        = "sync.request";
 
     function envelope(
             type as String,

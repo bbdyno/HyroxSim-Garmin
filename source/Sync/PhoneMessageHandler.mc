@@ -30,6 +30,23 @@ class PhoneMessageHandler {
         if (_registered) { return; }
         Communications.registerForPhoneAppMessages(method(:onPhoneMessage));
         _registered = true;
+        _sendSyncRequest();
+    }
+
+    // Boot ping. Fires once on app start to ask the phone to re-emit every
+    // template + goal it has. Without this, a session where the phone was
+    // already foreground when the watch app opened would never receive a
+    // hello (iOS only emits hello on sceneDidBecomeActive / BLE reconnect)
+    // and the watch would fall back to PaceReference defaults instead of
+    // the user's actual pace-planner targets. Transmit failures are
+    // silently swallowed by PhoneTransmitListener — if BLE isn't ready
+    // yet, the natural hello → hello.ack path will still cover it later.
+    private function _sendSyncRequest() as Void {
+        var env = MessageProtocol.envelope(
+            MessageProtocol.T_SYNC_REQUEST,
+            "watch-boot",
+            null);
+        _transmit(env);
     }
 
     // Toybox.Communications signature: callback(msg as Message)
