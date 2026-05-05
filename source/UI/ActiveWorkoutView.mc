@@ -51,6 +51,10 @@ class ActiveWorkoutView extends WatchUi.View {
         goal = GoalStore.resolve(template);
         engine.start(ActiveWorkoutView.nowMs());
         hrProvider.enable();
+        // Register so HyroxSimApp.onLocation can route GPS fixes into
+        // engine.ingestLocation. Cleared in finalizeOnExit so a stale
+        // engine reference never receives samples after the view is gone.
+        getApp().activeEngine = engine;
         // Only write to the Garmin Activity/FIT pipeline when the user has
         // paired the companion app. Unpaired installs run as a private
         // stopwatch — data stays on the watch and never surfaces in Garmin
@@ -87,11 +91,12 @@ class ActiveWorkoutView extends WatchUi.View {
     // not for transient covered-by-sub-view transitions. Idempotent.
     function finalizeOnExit() as Void {
         hrProvider.disable();
+        var app = getApp();
+        if (app.activeEngine == engine) { app.activeEngine = null; }
         if (recorder.isActive()) {
             recorder.stop();
             if (engine.isFinished()) {
                 var encoded = CompletedWorkoutCodec.encode(engine, "garmin");
-                var app = getApp();
                 if (app.phoneHandler != null) {
                     app.phoneHandler.submitCompletedWorkout(encoded);
                 } else {

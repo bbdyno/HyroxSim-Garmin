@@ -34,12 +34,19 @@ class WorkoutEngine {
     // segment, leaving ample headroom on FR265.
     static const kMaxHeartRateSamples = 360;
 
+    // Same 5 s downsample policy for GPS samples. With ~8 RUN segments at
+    // ~5 min average, steady-state is 60 samples × 8 = ~480 location
+    // dicts — well within FR265 budget.
+    static const kLocationSampleIntervalMs = 5000l;
+    static const kMaxLocationSamples = 360;
+
     private var _currentSegmentPausedMs;    // Long
     private var _liveMeasurements;          // SegmentMeasurements dict
-    // Wall-clock ms of the last accepted HR sample in the active segment.
-    // -1 sentinel means "no sample yet" so the first ingest always lands.
-    // Reset at every segment boundary so each segment starts fresh.
+    // Wall-clock ms of the last accepted HR / location sample in the active
+    // segment. -1 sentinel means "no sample yet" so the first ingest always
+    // lands. Reset at every segment boundary so each segment starts fresh.
     private var _lastHrSampleAtMs;          // Long
+    private var _lastLocationSampleAtMs;    // Long
 
     function initialize(template as Dictionary) {
         self.template = template;
@@ -48,6 +55,7 @@ class WorkoutEngine {
         _currentSegmentPausedMs = 0l;
         _liveMeasurements = SegmentMeasurements.empty();
         _lastHrSampleAtMs = -1l;
+        _lastLocationSampleAtMs = -1l;
     }
 
     // MARK: - Queries
@@ -125,6 +133,7 @@ class WorkoutEngine {
         _currentSegmentPausedMs = 0l;
         _liveMeasurements = SegmentMeasurements.empty();
         _lastHrSampleAtMs = -1l;
+        _lastLocationSampleAtMs = -1l;
         state = EngineState.running(0, nowMs, nowMs);
     }
 
@@ -145,6 +154,7 @@ class WorkoutEngine {
         _currentSegmentPausedMs = 0l;
         _liveMeasurements = SegmentMeasurements.empty();
         _lastHrSampleAtMs = -1l;
+        _lastLocationSampleAtMs = -1l;
 
         if (nextIdx < segs.size()) {
             state = EngineState.running(nextIdx, nowMs, wkStart);
@@ -190,6 +200,7 @@ class WorkoutEngine {
             _currentSegmentPausedMs = 0l;
             _liveMeasurements = SegmentMeasurements.empty();
             _lastHrSampleAtMs = -1l;
+        _lastLocationSampleAtMs = -1l;
             state = EngineState.finished(wkStart, nowMs);
             return;
         }
@@ -203,6 +214,7 @@ class WorkoutEngine {
             _currentSegmentPausedMs = 0l;
             _liveMeasurements = SegmentMeasurements.empty();
             _lastHrSampleAtMs = -1l;
+        _lastLocationSampleAtMs = -1l;
             state = EngineState.finished(wkStart, nowMs);
             return;
         }
@@ -225,6 +237,7 @@ class WorkoutEngine {
             _currentSegmentPausedMs = 0l;
             _liveMeasurements = SegmentMeasurements.empty();
             _lastHrSampleAtMs = -1l;
+        _lastLocationSampleAtMs = -1l;
             state = EngineState.running(
                 last[SegmentRecord.INDEX] as Number,
                 last[SegmentRecord.STARTED_AT_MS] as Long,
@@ -241,6 +254,7 @@ class WorkoutEngine {
             _currentSegmentPausedMs = 0l;
             _liveMeasurements = SegmentMeasurements.empty();
             _lastHrSampleAtMs = -1l;
+        _lastLocationSampleAtMs = -1l;
             state = EngineState.running(
                 last[SegmentRecord.INDEX] as Number,
                 last[SegmentRecord.STARTED_AT_MS] as Long,
@@ -283,8 +297,18 @@ class WorkoutEngine {
         var seg = currentSegment();
         if (seg == null) { return; }
         if (!SegmentType.tracksLocation(seg[WorkoutSegment.TYPE] as String)) { return; }
+        // 5 s downsample (mirrors HR policy) + per-segment cap. Caller is
+        // responsible for accuracy filtering — Position.Info on Garmin
+        // exposes only a Quality enum, not metres, so the gate lives at
+        // HyroxSimApp.onLocation where gpsReady() is checked.
+        if (_lastLocationSampleAtMs >= 0l
+                && (tMs - _lastLocationSampleAtMs) < kLocationSampleIntervalMs) {
+            return;
+        }
         var arr = _liveMeasurements[SegmentMeasurements.LOCATION_SAMPLES] as Array<Dictionary>;
+        if (arr.size() >= kMaxLocationSamples) { return; }
         arr.add(SegmentMeasurements.makeLocationSample(tMs, lat, lon, alt, hAcc, speed));
+        _lastLocationSampleAtMs = tMs;
     }
 
     function liveMeasurementsSnapshot() as Dictionary {

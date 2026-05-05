@@ -10,12 +10,19 @@ import Toybox.Application;
 import Toybox.Lang;
 import Toybox.Position;
 import Toybox.Sensor;
+import Toybox.Time;
 import Toybox.Timer;
 import Toybox.WatchUi;
 
 class HyroxSimApp extends Application.AppBase {
 
     public var phoneHandler;          // PhoneMessageHandler singleton
+    // Active WorkoutEngine when an ActiveWorkoutView is on screen — the
+    // view registers itself in initialize() and clears in finalizeOnExit().
+    // onLocation routes incoming GPS fixes here so distance / location
+    // measurements actually populate SegmentRecord.measurements (the engine
+    // method existed previously but had no caller, leaving GPS distance at 0).
+    public var activeEngine;          // WorkoutEngine? — null when not in a workout
 
     // App-wide GPS state. Enabled continuously from onStart so the home
     // screen already reflects acquisition by the time the user presses
@@ -113,6 +120,26 @@ class HyroxSimApp extends Application.AppBase {
         }
         if (info has :speed && info.speed != null) {
             _updateGpsSpeed(info.speed);
+        }
+        // Forward to the active workout engine when GPS is locked. The
+        // engine applies its own 5 s downsample + per-segment cap and
+        // segment-type gate, so this call is cheap when not in a Run/RoxZone
+        // segment. We require gpsReady() because Position.Info exposes only
+        // a Quality enum (not a metres-accuracy field), so this is the only
+        // gate available at the source.
+        if (activeEngine != null && gpsReady()
+                && info has :position && info.position != null) {
+            var coords = info.position.toDegrees();
+            var alt = (info has :altitude && info.altitude != null)
+                    ? (info.altitude as Float).toDouble() : null;
+            var t = Time.now().value().toLong() * 1000l;
+            activeEngine.ingestLocation(
+                t,
+                coords[0] as Double,
+                coords[1] as Double,
+                alt,
+                null,                        // hAcc not exposed in metres
+                gpsSpeedMps);                // smoothed speed for distance fallback
         }
         // Only repaint when the visible quality bucket changed. The active
         // workout view ticks every 500 ms on its own; HomeView only cares
