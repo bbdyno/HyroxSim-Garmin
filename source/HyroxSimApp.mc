@@ -22,7 +22,13 @@ class HyroxSimApp extends Application.AppBase {
     // START — first-tick GPS cold-start would otherwise leave pace blank
     // for the opening ~30 s of a Run segment.
     public var gpsQuality = 0;        // Position.QUALITY_* (0 = NOT_AVAILABLE)
-    public var gpsSpeedMps = null;    // m/s or null
+    public var gpsSpeedMps = null;    // EMA-smoothed m/s, null until first fix
+
+    // EMA smoothing factor for gpsSpeedMps. 0.3 = 30 % weight on the
+    // freshest sample, 70 % on the running estimate — equivalent to a ~3 s
+    // window at our 1 Hz GPS callback rate. Removes the per-sample jitter
+    // that previously caused /km pace to bounce 4:00 ↔ 6:00 each second.
+    private const _GPS_SPEED_ALPHA = 0.3;
 
     private var _gpsPollTimer;
 
@@ -58,63 +64,90 @@ class HyroxSimApp extends Application.AppBase {
         Sensor.setEnabledSensors([] as Array<SensorType>);
     }
 
-    // Spell out the constellation set rather than passing the bare
-    // LOCATION_CONTINUOUS constant. Modern Forerunners default to a
-    // constellation mix the firmware picks for battery — which can be
-    // GPS-only on some power profiles, costing us 30+ s of cold-start
-    // time. Naming the constellations forces every visible satellite
-    // (GPS + GLONASS + Galileo) into the first-fix calculation.
+    // Pick the highest-accuracy GNSS configuration the device supports.
+    //
+    // Garmin's :configuration option is the modern replacement for the
+    // manual :constellations selection. On multi-band hardware (FR265,
+    // FR965 — the MVP targets) it enables GPS L1+L5 / Galileo L1+L5 /
+    // BeiDou L1+L5 which is what Garmin's own running profile uses to
+    // close the accuracy gap with bare L1 GPS. The previous code only
+    // requested L1 GPS+GLONASS+Galileo and was visibly worse than the
+    // native running activity in the same conditions.
+    //
+    // Fallback chain: best multi-band → best single-band → SatIQ
+    // (firmware-managed) → bare LOCATION_CONTINUOUS. The try/catch
+    // covers older firmware that rejects an unknown configuration value.
     private function _enableHighAccuracyGps() as Void {
+        var listener = method(:onLocation);
+        var opts = { :acquisitionType => Position.LOCATION_CONTINUOUS };
+        if (Position has :hasConfigurationSupport) {
+            if (Position has :CONFIGURATION_GPS_GLONASS_GALILEO_BEIDOU_L1_L5
+                    && Position.hasConfigurationSupport(
+                        Position.CONFIGURATION_GPS_GLONASS_GALILEO_BEIDOU_L1_L5)) {
+                opts[:configuration] =
+                    Position.CONFIGURATION_GPS_GLONASS_GALILEO_BEIDOU_L1_L5;
+            } else if (Position has :CONFIGURATION_GPS_GLONASS_GALILEO_BEIDOU_L1
+                    && Position.hasConfigurationSupport(
+                        Position.CONFIGURATION_GPS_GLONASS_GALILEO_BEIDOU_L1)) {
+                opts[:configuration] =
+                    Position.CONFIGURATION_GPS_GLONASS_GALILEO_BEIDOU_L1;
+            } else if (Position has :CONFIGURATION_SAT_IQ
+                    && Position.hasConfigurationSupport(Position.CONFIGURATION_SAT_IQ)) {
+                opts[:configuration] = Position.CONFIGURATION_SAT_IQ;
+            }
+        }
         try {
-            var opts = {
-                :acquisitionType => Position.LOCATION_CONTINUOUS,
-                :constellations => [
-                    Position.CONSTELLATION_GPS,
-                    Position.CONSTELLATION_GLONASS,
-                    Position.CONSTELLATION_GALILEO
-                ]
-            };
-            Position.enableLocationEvents(opts, method(:onLocation));
+            Position.enableLocationEvents(opts, listener);
         } catch (ex) {
-            // Older firmware / non-multi-GNSS devices may reject the
-            // options dict. Fall back to the simpler form so we still
-            // get a single-constellation fix.
             Position.enableLocationEvents(
-                Position.LOCATION_CONTINUOUS, method(:onLocation));
+                Position.LOCATION_CONTINUOUS, listener);
         }
     }
 
     function onLocation(info as Position.Info) as Void {
-        if (info has :accuracy && info.accuracy != null) {
+        var qualityChanged = false;
+        if (info has :accuracy && info.accuracy != null
+                && info.accuracy != gpsQuality) {
             gpsQuality = info.accuracy;
+            qualityChanged = true;
         }
         if (info has :speed && info.speed != null) {
-            gpsSpeedMps = info.speed;
+            _updateGpsSpeed(info.speed);
         }
-        WatchUi.requestUpdate();
+        // Only repaint when the visible quality bucket changed. The active
+        // workout view ticks every 500 ms on its own; HomeView only cares
+        // about the GPS indicator transitioning READY/ACQUIRING/SEARCHING
+        // — repainting per location callback (≈1 Hz) just burns battery.
+        if (qualityChanged) {
+            WatchUi.requestUpdate();
+        }
     }
 
-    // Periodic re-read of the OS-shared activity info. Same data the
-    // workout screen pulls for HR — touching it here just keeps the
-    // home screen's GPS indicator alive when onLocation is quiet.
+    // Periodic re-read of the OS-shared activity info. Acts as a backstop
+    // for accuracy when the Position listener falls silent on AOD/glance
+    // transitions or under firmware power throttling. Speed is intentionally
+    // left to onLocation so we have a single authoritative source for the
+    // EMA — having both update the smoothed value caused the polled and
+    // listener readings to fight each other and produced visible flicker.
     function _pollGps() as Void {
         var info = Activity.getActivityInfo();
         if (info == null) { return; }
-        var changed = false;
         if (info has :currentLocationAccuracy
                 && info.currentLocationAccuracy != null
                 && info.currentLocationAccuracy != gpsQuality) {
             gpsQuality = info.currentLocationAccuracy;
-            changed = true;
-        }
-        if (info has :currentSpeed && info.currentSpeed != null) {
-            // Always store latest speed; only the workout view paints
-            // it and that view ticks at 500 ms on its own.
-            gpsSpeedMps = info.currentSpeed;
-        }
-        if (changed) {
             WatchUi.requestUpdate();
         }
+    }
+
+    private function _updateGpsSpeed(rawMps as Float) as Void {
+        if (gpsSpeedMps == null) {
+            gpsSpeedMps = rawMps;
+            return;
+        }
+        var prev = gpsSpeedMps as Float;
+        gpsSpeedMps = _GPS_SPEED_ALPHA * rawMps
+                    + (1.0 - _GPS_SPEED_ALPHA) * prev;
     }
 
     function gpsReady() as Boolean {
