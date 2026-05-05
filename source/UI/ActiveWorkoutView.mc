@@ -72,18 +72,23 @@ class ActiveWorkoutView extends WatchUi.View {
             _tickTimer.stop();
             _tickTimer = null;
         }
-        // Idempotent cleanup. ActionMenu's End/Discard already disable
-        // these, so we double-call here only to catch the natural-finish
-        // path — segment-by-segment advance to completion + SELECT/BACK
-        // pops the view without going through the menu. Without this
-        // the FIT session and HR sensor stay active and crash the next
-        // workout's createSession call.
+        // NOTE: HR sensor and FIT recorder are intentionally NOT torn down
+        // here. Per the CIQ View lifecycle, onHide() also fires when a
+        // sub-view is pushed on top (e.g. ActionMenu). Disabling sensors or
+        // calling recorder.stop() at that point would kill the live HR feed
+        // and finalize the FIT session mid-workout, dropping the run from
+        // Garmin Connect and (combined with accumulated HR samples) caused
+        // the 10–20 min OOM crash. Cleanup runs from explicit exit paths:
+        // ActionMenuDelegate (End/Discard) and finalizeOnExit() below for
+        // the natural-finish + BACK/SELECT path.
+    }
+
+    // Explicit teardown for paths that genuinely leave the workout view —
+    // not for transient covered-by-sub-view transitions. Idempotent.
+    function finalizeOnExit() as Void {
         hrProvider.disable();
         if (recorder.isActive()) {
             recorder.stop();
-            // Natural finish also needs to reach the phone outbox; the
-            // menu's End path encodes there, but BACK after FINISHED
-            // would otherwise drop the run on the floor.
             if (engine.isFinished()) {
                 var encoded = CompletedWorkoutCodec.encode(engine, "garmin");
                 var app = getApp();

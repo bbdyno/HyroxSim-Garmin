@@ -54,6 +54,7 @@ class ActiveWorkoutDelegate extends WatchUi.BehaviorDelegate {
         _lastEnterMs = 0l;  // consume
 
         if (view.engine.isFinished()) {
+            view.finalizeOnExit();
             WatchUi.popView(WatchUi.SLIDE_RIGHT);
             return true;
         }
@@ -120,7 +121,10 @@ class ActiveWorkoutDelegate extends WatchUi.BehaviorDelegate {
 
     function onBack() as Boolean {
         if (view.engine.isFinished()) {
-            // Let the default back pop this view.
+            // Natural finish path: explicit teardown before letting the
+            // default back pop this view. onHide() no longer does this
+            // (would also fire on menu push), so we must call it here.
+            view.finalizeOnExit();
             return false;
         }
         // Block accidental exit during active workout — open the action menu.
