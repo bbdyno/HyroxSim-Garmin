@@ -13,21 +13,33 @@ import Toybox.Lang;
 // engine never reads the system clock directly, ensuring deterministic
 // behaviour and full testability. Mirrors iOS HyroxCore.WorkoutEngine.
 //
-// Memory note: heart-rate samples are capped at kMaxHeartRateSamples per
-// segment to survive on the ~128KB budget of Forerunner 265.
+// Memory note: heart-rate samples are downsampled to one per
+// kHeartRateSampleIntervalMs window at ingest time, and capped at
+// kMaxHeartRateSamples per segment. This keeps a full 31-segment workout
+// well under the ~128 KB heap of Forerunner 265 (a previous 2 Hz raw
+// scheme was the dominant contributor to the 10–20 min OOM crash).
 class WorkoutEngine {
 
     public var template;    // WorkoutTemplate dict
     public var state;       // EngineState dict
     public var records;     // Array<SegmentRecord dict>
 
-    // Cap per-segment HR sample count to prevent OOM on tight devices.
-    // At 1Hz sampling this covers ~30 min of a single segment which far
-    // exceeds realistic HYROX segment lengths (<10 min).
-    static const kMaxHeartRateSamples = 1800;
+    // 5 s downsample window — matches CompletedWorkoutCodec so the on-watch
+    // buffer and the wire payload share a single resolution policy.
+    static const kHeartRateSampleIntervalMs = 5000l;
+    // Per-segment HR sample cap. At 5 s spacing this covers 30 min of a
+    // single segment, far above realistic HYROX segment durations (<10 min).
+    // 31 × 360 × ~60 B ≈ ~670 KB worst case is still wrong — but real
+    // segments are 1–10 min, so steady-state usage is ~12–120 samples per
+    // segment, leaving ample headroom on FR265.
+    static const kMaxHeartRateSamples = 360;
 
     private var _currentSegmentPausedMs;    // Long
     private var _liveMeasurements;          // SegmentMeasurements dict
+    // Wall-clock ms of the last accepted HR sample in the active segment.
+    // -1 sentinel means "no sample yet" so the first ingest always lands.
+    // Reset at every segment boundary so each segment starts fresh.
+    private var _lastHrSampleAtMs;          // Long
 
     function initialize(template as Dictionary) {
         self.template = template;
@@ -35,6 +47,7 @@ class WorkoutEngine {
         self.records = [];
         _currentSegmentPausedMs = 0l;
         _liveMeasurements = SegmentMeasurements.empty();
+        _lastHrSampleAtMs = -1l;
     }
 
     // MARK: - Queries
@@ -111,6 +124,7 @@ class WorkoutEngine {
         }
         _currentSegmentPausedMs = 0l;
         _liveMeasurements = SegmentMeasurements.empty();
+        _lastHrSampleAtMs = -1l;
         state = EngineState.running(0, nowMs, nowMs);
     }
 
@@ -130,6 +144,7 @@ class WorkoutEngine {
         var nextIdx = index + 1;
         _currentSegmentPausedMs = 0l;
         _liveMeasurements = SegmentMeasurements.empty();
+        _lastHrSampleAtMs = -1l;
 
         if (nextIdx < segs.size()) {
             state = EngineState.running(nextIdx, nowMs, wkStart);
@@ -174,6 +189,7 @@ class WorkoutEngine {
             _flushRecord(index, segStart, nowMs, _currentSegmentPausedMs);
             _currentSegmentPausedMs = 0l;
             _liveMeasurements = SegmentMeasurements.empty();
+            _lastHrSampleAtMs = -1l;
             state = EngineState.finished(wkStart, nowMs);
             return;
         }
@@ -186,6 +202,7 @@ class WorkoutEngine {
             _flushRecord(index, effectiveStart, nowMs, 0l);
             _currentSegmentPausedMs = 0l;
             _liveMeasurements = SegmentMeasurements.empty();
+            _lastHrSampleAtMs = -1l;
             state = EngineState.finished(wkStart, nowMs);
             return;
         }
@@ -207,6 +224,7 @@ class WorkoutEngine {
             var wkStart = state[EngineState.WORKOUT_STARTED_AT_MS] as Long;
             _currentSegmentPausedMs = 0l;
             _liveMeasurements = SegmentMeasurements.empty();
+            _lastHrSampleAtMs = -1l;
             state = EngineState.running(
                 last[SegmentRecord.INDEX] as Number,
                 last[SegmentRecord.STARTED_AT_MS] as Long,
@@ -222,6 +240,7 @@ class WorkoutEngine {
             var wkStart = state[EngineState.WORKOUT_STARTED_AT_MS] as Long;
             _currentSegmentPausedMs = 0l;
             _liveMeasurements = SegmentMeasurements.empty();
+            _lastHrSampleAtMs = -1l;
             state = EngineState.running(
                 last[SegmentRecord.INDEX] as Number,
                 last[SegmentRecord.STARTED_AT_MS] as Long,
@@ -237,9 +256,20 @@ class WorkoutEngine {
 
     function ingestHeartRate(tMs as Long, bpm as Number) as Void {
         if (!EngineState.is(state, EngineState.KIND_RUNNING)) { return; }
+        // Throttle to one sample per kHeartRateSampleIntervalMs window.
+        // Callers (HeartRateProvider) tick at 500 ms — without throttling
+        // we would accumulate 2 Hz raw samples and exhaust FR265 heap mid-
+        // workout. Pause/resume preserves the last-sample cursor; the gap
+        // across paused time naturally exceeds the interval so the first
+        // post-resume sample lands.
+        if (_lastHrSampleAtMs >= 0l
+                && (tMs - _lastHrSampleAtMs) < kHeartRateSampleIntervalMs) {
+            return;
+        }
         var arr = _liveMeasurements[SegmentMeasurements.HEART_RATE_SAMPLES] as Array<Dictionary>;
         if (arr.size() >= kMaxHeartRateSamples) { return; }
         arr.add(SegmentMeasurements.makeHeartRateSample(tMs, bpm));
+        _lastHrSampleAtMs = tMs;
     }
 
     function ingestLocation(
