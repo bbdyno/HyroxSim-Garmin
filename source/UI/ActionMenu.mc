@@ -56,7 +56,7 @@ class ActionMenuDelegate extends WatchUi.Menu2InputDelegate {
             return;
         }
         if (id.equals("end")) {
-            engine.finish(nowMs);
+            if (!engine.isFinished()) { engine.finish(nowMs); }
             view.hrProvider.disable();
             view.recorder.stop();
             // Serialize & queue for phone transmission.
@@ -77,7 +77,7 @@ class ActionMenuDelegate extends WatchUi.Menu2InputDelegate {
         if (id.equals("discard")) {
             // Abort path: drop the FIT session, skip codec/storage entirely
             // so neither Garmin Connect nor the phone outbox sees this run.
-            engine.finish(nowMs);
+            if (!engine.isFinished()) { engine.finish(nowMs); }
             view.hrProvider.disable();
             view.recorder.discard();
             WatchUi.popView(WatchUi.SLIDE_DOWN);  // close ActionMenu

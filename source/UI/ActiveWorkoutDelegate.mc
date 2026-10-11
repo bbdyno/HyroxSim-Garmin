@@ -66,7 +66,9 @@ class ActiveWorkoutDelegate extends WatchUi.BehaviorDelegate {
             // splits (still recoverable from our own SegmentRecord buffer)
             // for a quieter audio experience. Segment cue is delivered by
             // the tone + type-specific vibration below.
-            Attention.playTone(Attention.TONE_INTERVAL_ALERT);
+            if (Attention has :playTone) {
+                Attention.playTone(Attention.TONE_INTERVAL_ALERT);
+            }
             _vibrateForCurrentSegment();
             WatchUi.requestUpdate();
         }
@@ -112,6 +114,8 @@ class ActiveWorkoutDelegate extends WatchUi.BehaviorDelegate {
     }
 
     function onMenu() as Boolean {
+        // 완주 화면에서는 메뉴를 열지 않는다(종료를 두 번 누르면 엔진이 예외를 던졌다).
+        if (view.engine.isFinished()) { return true; }
         WatchUi.pushView(
             new ActionMenu(view.engine),
             new ActionMenuDelegate(view),

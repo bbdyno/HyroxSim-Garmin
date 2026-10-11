@@ -61,7 +61,18 @@ module WorkoutStorage {
                 current = _sliceExcluding(current, 0);
             }
         }
-        Application.Storage.setValue(KEY, current);
+        try {
+            Application.Storage.setValue(KEY, current);
+        } catch (ex) {
+            // 값 크기 한도 초과. 가장 오래된 기록을 버리고 한 번만 다시 시도한다.
+            if (current.size() > 1) {
+                try {
+                    Application.Storage.setValue(KEY, [entry]);
+                } catch (ex2) {
+                    Toybox.System.println("outbox write failed: " + ex2.getErrorMessage());
+                }
+            }
+        }
     }
 
     function markSynced(id as String) as Void {

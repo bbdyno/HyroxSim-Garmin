@@ -26,7 +26,8 @@ class WorkoutEngine {
 
     // 5 s downsample window — matches CompletedWorkoutCodec so the on-watch
     // buffer and the wire payload share a single resolution policy.
-    static const kHeartRateSampleIntervalMs = 5000l;
+    // 5 s 간격이면 100분 세션에 딕셔너리 1,200개가 쌓여 힙이 모자란다. 15 s 로 줄인다.
+    static const kHeartRateSampleIntervalMs = 15000l;
     // Per-segment HR sample cap. At 5 s spacing this covers 30 min of a
     // single segment, far above realistic HYROX segment durations (<10 min).
     // 31 × 360 × ~60 B ≈ ~670 KB worst case is still wrong — but real
@@ -305,9 +306,9 @@ class WorkoutEngine {
                 && (tMs - _lastLocationSampleAtMs) < kLocationSampleIntervalMs) {
             return;
         }
-        var arr = _liveMeasurements[SegmentMeasurements.LOCATION_SAMPLES] as Array<Dictionary>;
-        if (arr.size() >= kMaxLocationSamples) { return; }
-        arr.add(SegmentMeasurements.makeLocationSample(tMs, lat, lon, alt, hAcc, speed));
+        // 위치 샘플은 저장하지 않는다. 읽는 곳이 없고(코덱도 보내지 않음), 샘플마다
+        // 6-키 딕셔너리가 세션 내내 쌓여 운동 중 메모리 부족으로 앱이 죽었다.
+        // 거리 표시는 ActivityInfo 가 준다.
         _lastLocationSampleAtMs = tMs;
     }
 

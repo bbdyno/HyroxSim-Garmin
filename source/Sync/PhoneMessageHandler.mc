@@ -52,10 +52,20 @@ class PhoneMessageHandler {
     // Toybox.Communications signature: callback(msg as Message)
     // Message#data holds the Dictionary payload exactly as the phone sent it.
     function onPhoneMessage(msg as Communications.PhoneAppMessage) as Void {
+        // 콜백 안에서 잡히지 않은 예외는 앱 전체를 죽인다. 운동 중에도 호출되므로 통째로 감싼다.
+        try {
+            _handlePhoneMessage(msg);
+        } catch (ex) {
+            System.println("phone message dropped: " + ex.getErrorMessage());
+        }
+    }
+
+    function _handlePhoneMessage(msg as Communications.PhoneAppMessage) as Void {
+        if (!(msg.data instanceof Dictionary)) { return; }
         var data = msg.data as Dictionary;
-        if (data == null) { return; }
         var type = data[MessageProtocol.K_TYPE] as String;
         var id = data[MessageProtocol.K_ID] as String;
+        if (type == null) { return; }
 
         if (type.equals(MessageProtocol.T_HELLO)) {
             // First successful hello unlocks the app (pairing gate). If the
@@ -64,7 +74,8 @@ class PhoneMessageHandler {
             // switch views here because the user may be mid-read.
             PairingStore.recordHello();
             _sendHelloAck(id);
-            flushOutbox();
+            // 재연결마다 오는 hello 에서 outbox 전체를 읽어 보내면 운동 중 힙이 모자란다.
+            if (!_workoutInProgress()) { flushOutbox(); }
             // Repaint home so the "PAIR PHONE APP" hint flips to the actual
             // paired state immediately. Without this the storage flag is set
             // but the visible card stays stale until the user navigates away
@@ -99,6 +110,11 @@ class PhoneMessageHandler {
     function submitCompletedWorkout(completedWorkout as Dictionary) as Void {
         WorkoutStorage.enqueue(completedWorkout);
         flushOutbox();
+    }
+
+    function _workoutInProgress() as Boolean {
+        var engine = getApp().activeEngine;
+        return engine != null && !engine.isFinished();
     }
 
     function flushOutbox() as Void {
@@ -157,10 +173,15 @@ class PhoneMessageHandler {
     }
 
     function _transmit(env as Dictionary) as Void {
-        Communications.transmit(
-            env,
-            null,
-            new PhoneTransmitListener());
+        try {
+            Communications.transmit(
+                env,
+                null,
+                new PhoneTransmitListener());
+        } catch (ex) {
+            // 페이로드가 너무 크거나 링크가 없을 때. outbox 에 남아 다음 hello 에서 다시 시도한다.
+            System.println("transmit failed: " + ex.getErrorMessage());
+        }
     }
 }
 

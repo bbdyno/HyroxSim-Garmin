@@ -15,7 +15,9 @@ import Toybox.Lang;
 // Here we only store the aggregate seconds to keep RAM usage tiny.
 module PaceReference {
     // Reference total seconds per division.
-    function referenceTotalSeconds(division as String) as Number {
+    function referenceTotalSeconds(division as String?) as Number {
+        // 커스텀 템플릿은 디비전이 없다. null 에 .equals 를 부르면 시작과 동시에 죽는다.
+        if (division == null) { return 80 * 60; }
         if (division.equals(HyroxDivision.MEN_OPEN_SINGLE))    { return 75 * 60; }
         if (division.equals(HyroxDivision.MEN_OPEN_DOUBLE))    { return 65 * 60; }
         if (division.equals(HyroxDivision.MEN_PRO_SINGLE))     { return 70 * 60; }

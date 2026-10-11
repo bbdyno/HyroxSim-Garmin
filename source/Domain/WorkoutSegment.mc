@@ -101,8 +101,19 @@ module WorkoutSegment {
     // combining the current epoch second with a 32-bit random, which is
     // sufficient for idempotent upsert keys on the phone side.
     function newId() as String {
-        var t = Time.now().value();
-        var r = Math.rand();
-        return t.toString() + "-" + r.toString();
+        // iOS/Android 코덱은 UUID 형식만 받는다. 난수 4개로 v4 UUID 문자열을 만든다.
+        var a = Math.rand();
+        var b = Math.rand();
+        var c = Math.rand();
+        var d = Math.rand();
+        return _hex4(a >> 16) + _hex4(a) + "-"
+            + _hex4(b >> 16) + "-"
+            + _hex4((b & 0x0FFF) | 0x4000) + "-"
+            + _hex4((c & 0x3FFF) | 0x8000) + "-"
+            + _hex4(c >> 16) + _hex4(d >> 16) + _hex4(d);
+    }
+
+    function _hex4(value as Number) as String {
+        return (value & 0xFFFF).format("%04x");
     }
 }
