@@ -9,39 +9,36 @@ import Toybox.Application;
 import Toybox.Lang;
 import Toybox.WatchUi;
 
-// Modal menu for pause/resume/end during a workout. Built from Menu2 so it
-// works across touch + button devices.
-class ActionMenu extends WatchUi.Menu2 {
+// Pause / resume / end menu shown over a running workout (BACK button).
+class ActionMenu extends WheelView {
 
-    public var engine;
-
-    function initialize(eng as WorkoutEngine) {
-        Menu2.initialize({ :title => "Actions" });
-        engine = eng;
-        if (EngineState.is(eng.state, EngineState.KIND_RUNNING)) {
-            addItem(new MenuItem("Pause", null, "pause", null));
-        } else if (EngineState.is(eng.state, EngineState.KIND_PAUSED)) {
-            addItem(new MenuItem("Resume", null, "resume", null));
-        }
-        addItem(new MenuItem("End workout", "Save & exit", "end", null));
-        addItem(new MenuItem("Discard", "Exit, don't save", "discard", null));
-        addItem(new MenuItem("Cancel", null, "cancel", null));
-    }
-}
-
-class ActionMenuDelegate extends WatchUi.Menu2InputDelegate {
-
-    public var view;
+    public var view as ActiveWorkoutView;
 
     function initialize(v as ActiveWorkoutView) {
-        Menu2InputDelegate.initialize();
+        WheelView.initialize("WORKOUT");
         view = v;
+        hintLabel = "OK";
+        var list = [] as Array<Dictionary>;
+        var eng = v.engine as WorkoutEngine;
+        // The workout screen has no room for the running total — it is
+        // one press away here (and on the paused screen).
+        header2 = "TOTAL " + Styles.formatClock(eng.totalElapsedMs(ActiveWorkoutView.nowMs()));
+        if (EngineState.is(eng.state, EngineState.KIND_RUNNING)) {
+            list.add({ :id => "pause", :title => "PAUSE", :sub => "STOP THE CLOCK" });
+        } else if (EngineState.is(eng.state, EngineState.KIND_PAUSED)) {
+            list.add({ :id => "resume", :title => "RESUME", :sub => "RESTART THE CLOCK" });
+        }
+        list.add({ :id => "end", :title => "END WORKOUT", :sub => "SAVE & EXIT" });
+        list.add({ :id => "discard", :title => "DISCARD", :sub => "EXIT, DON'T SAVE" });
+        list.add({ :id => "cancel", :title => "CANCEL", :sub => "BACK TO WORKOUT" });
+        setItems(list);
     }
 
-    function onSelect(item as MenuItem) as Void {
-        var id = item.getId() as String;
+    function activate() as Void {
+        var id = selectedId();
+        if (id == null) { return; }
         var nowMs = ActiveWorkoutView.nowMs();
-        var engine = view.engine;
+        var engine = view.engine as WorkoutEngine;
 
         if (id.equals("pause")) {
             engine.pause(nowMs);
@@ -61,6 +58,7 @@ class ActionMenuDelegate extends WatchUi.Menu2InputDelegate {
             view.recorder.stop();
             // Serialize & queue for phone transmission.
             view.submitIfFinished();
+            view.detachFromApp();
             WatchUi.popView(WatchUi.SLIDE_DOWN);
             WatchUi.switchToView(
                 new ResultView(engine),
@@ -74,6 +72,10 @@ class ActionMenuDelegate extends WatchUi.Menu2InputDelegate {
             if (!engine.isFinished()) { engine.finish(nowMs); }
             view.hrProvider.disable();
             view.recorder.discard();
+            // Without this the app-shutdown safety net would still find
+            // the finished engine and queue the discarded workout.
+            view.markDiscarded();
+            view.detachFromApp();
             WatchUi.popView(WatchUi.SLIDE_DOWN);  // close ActionMenu
             WatchUi.popView(WatchUi.SLIDE_RIGHT); // close ActiveWorkoutView → home
             return;
@@ -82,7 +84,8 @@ class ActionMenuDelegate extends WatchUi.Menu2InputDelegate {
         WatchUi.popView(WatchUi.SLIDE_DOWN);
     }
 
-    function onBack() as Void {
+    function back() as Boolean {
         WatchUi.popView(WatchUi.SLIDE_DOWN);
+        return true;
     }
 }

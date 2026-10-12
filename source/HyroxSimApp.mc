@@ -197,7 +197,7 @@ class HyroxSimApp extends Application.AppBase {
         // the phone has pushed data — the watch never fakes a goal or template.
         // See PairingStore / GoalStore / TemplateStore for individual checks.
         var home = new HomeView();
-        return [home, new HomeViewDelegate(home)];
+        return [home, new WheelDelegate(home)];
     }
 }
 

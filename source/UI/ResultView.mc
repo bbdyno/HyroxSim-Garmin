@@ -7,204 +7,196 @@
 
 import Toybox.Graphics;
 import Toybox.Lang;
-import Toybox.Timer;
 import Toybox.WatchUi;
 
-// Post-workout summary. Two zones:
-//   1. Sticky header — "FINISHED" + big total time (never scrolls)
-//   2. Scrollable list — per-segment breakdown with colored type dots
-// Scroll via UP/DOWN buttons or touch swipe. Row-height aligned so one
-// press moves exactly one row; clamps to content bounds on both ends.
+// Finish summary, shared by ResultView and the natural-finish state of
+// ActiveWorkoutView. Everything is computed once — a finished engine no
+// longer changes.
+//
+//          FINISH            caption ("ENDED EARLY" when cut short)
+//         1:14:32            total time — the hero
+//          -0:28             against the goal
+//      BURPEE BJ +0:34       the station that cost the most time
+//
+// The ring shows every block gold (beat its goal) or orange (did not).
+class ResultSummary {
+
+    public var states as Array<Number>;
+    public var totalMs as Long;
+    public var deltaMs as Long;
+    public var complete as Boolean;
+    public var worstLine as String?;
+    public var worstBehind as Boolean;
+
+    function initialize(engine as WorkoutEngine, goal as Dictionary) {
+        var segs = (engine.template as Dictionary)[WorkoutTemplate.SEGMENTS] as Array<Dictionary>;
+        var records = engine.records as Array;
+        var targets = goal[GoalStore.TARGET_SEGMENTS_MS] as Array?;
+
+        states = RingModel.blockStates(
+            RingModel.blockMap(segs), RingModel.durations(records), targets, null);
+        totalMs = engine.totalElapsedMs(ActiveWorkoutView.nowMs());
+        complete = records.size() >= segs.size();
+        deltaMs = RingModel.finishDeltaMs(
+            totalMs, records.size(), segs.size(), targets,
+            (goal[GoalStore.TARGET_TOTAL_MS] as Number or Long).toLong());
+
+        worstLine = null;
+        worstBehind = false;
+        var worst = RingModel.worstStation(records, targets);
+        if (worst >= 0 && worst < segs.size()) {
+            var kind = (segs[worst] as Dictionary)[WorkoutSegment.STATION_KIND];
+            var delta = SegmentRecord.activeDurationMs(records[worst] as Dictionary)
+                - ((targets as Array)[worst] as Number or Long).toLong();
+            worstLine = (kind != null ? StationKind.shortName(kind as String) : "STATION")
+                + " " + Styles.formatDelta(delta);
+            worstBehind = delta > 0l;
+        }
+    }
+
+    function draw(dc as Graphics.Dc) as Void {
+        var cap = Fonts.cap();
+        Ring.draw(dc, states, states.size(), null);
+        Ui.text(dc, 100, 46, cap, Palette.GREY,
+            complete ? "FINISH" : "ENDED EARLY", Ui.CENTER);
+        Ui.text(dc, 100, 84, Fonts.big(), Styles.COLOR_TEXT,
+            Styles.formatClock(totalMs), Ui.CENTER);
+        Ui.text(dc, 100, 117, Fonts.mid(), Styles.colorForDelta(deltaMs),
+            Styles.formatDelta(deltaMs), Ui.CENTER);
+        if (worstLine != null) {
+            Ui.text(dc, 100, 153, cap,
+                worstBehind ? Palette.ORANGE : Palette.GOLD,
+                worstLine as String, Ui.CENTER);
+        }
+    }
+}
+
+// Post-workout screen (End workout → here). Page 0 is the summary; DOWN
+// pages through the splits, four segments per page:
+//
+//   ▌ RUN 1            4:10      label + time
+//   ▌ GOAL 4:24       -0:14      goal + delta (gold ahead / orange behind)
+//
+// All rows share one column, inset to clear the round bezel.
 class ResultView extends WatchUi.View {
 
+    static const ROWS_PER_PAGE = 4;
+
     public var engine;
-    private var _goal;           // Dictionary (GoalStore shape) — always resolved
-    private var _hasExplicitGoal;
-    private var _scroll;         // current visual px offset
-    private var _targetScroll;   // tween target px offset
-    private var _rowH;           // cached row height (set during onUpdate)
-    private var _maxScroll;      // cached upper clamp (set during onUpdate)
-    private var _animTimer;
+    private var _goal as Dictionary;
+    private var _summary as ResultSummary;
+    private var _page as Number;
 
     function initialize(eng as WorkoutEngine) {
         View.initialize();
         engine = eng;
-        var stored = GoalStore.load();
-        var division = engine.template[WorkoutTemplate.DIVISION] as String;
-        _hasExplicitGoal = (stored != null
-                && (stored[GoalStore.DIVISION] as String).equals(division));
-        _goal = GoalStore.resolve(engine.template);
-        _scroll = 0;
-        _targetScroll = 0;
-        _rowH = 0;
-        _maxScroll = 0;
-        _animTimer = null;
+        _goal = GoalStore.resolve(eng.template);
+        _summary = new ResultSummary(eng, _goal);
+        _page = 0;
     }
 
-    function onHide() as Void {
-        if (_animTimer != null) {
-            _animTimer.stop();
-            _animTimer = null;
-        }
+    function pageCount() as Number {
+        var rows = ((engine as WorkoutEngine).records as Array).size();
+        return 1 + (rows + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE;
     }
 
-    function scrollBy(deltaRows as Number) as Void {
-        var step = _rowH > 0 ? _rowH : 60;
-        _targetScroll += deltaRows * step;
-        if (_targetScroll < 0) { _targetScroll = 0; }
-        if (_targetScroll > _maxScroll) { _targetScroll = _maxScroll; }
-        _startAnim();
-    }
-
-    private function _startAnim() as Void {
-        if (_animTimer != null) { return; }
-        _animTimer = new Timer.Timer();
-        _animTimer.start(method(:_onAnimTick), 30, true);
-    }
-
-    // Tweens _scroll toward _targetScroll with 25% easing — settles in
-    // ~6-7 frames (~200 ms at 30 ms interval).
-    function _onAnimTick() as Void {
-        var diff = _targetScroll - _scroll;
-        if (diff > 3 || diff < -3) {
-            _scroll += diff / 4;
+    // Moves by whole pages; clamps at both ends.
+    function scrollBy(deltaPages as Number) as Void {
+        var target = _page + deltaPages;
+        var last = pageCount() - 1;
+        if (target < 0) { target = 0; }
+        if (target > last) { target = last; }
+        if (target != _page) {
+            _page = target;
             WatchUi.requestUpdate();
-        } else {
-            _scroll = _targetScroll;
-            WatchUi.requestUpdate();
-            if (_animTimer != null) {
-                _animTimer.stop();
-                _animTimer = null;
-            }
         }
     }
 
     function onUpdate(dc as Graphics.Dc) as Void {
-        dc.setColor(Styles.COLOR_TEXT_PRIMARY, Styles.COLOR_BACKGROUND);
-        dc.clear();
-        dc.setAntiAlias(true);
+        Ui.clear(dc);
+        var cap = Fonts.cap();
+        var pages = pageCount();
 
-        var w = dc.getWidth();
-        var h = dc.getHeight();
-        var cx = w / 2;
-
-        var centerJust = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
-        var leftVJust = Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER;
-        var rightVJust = Graphics.TEXT_JUSTIFY_RIGHT | Graphics.TEXT_JUSTIFY_VCENTER;
-
-        // --- Sticky header (32% of screen) ---
-        var headerH = (h * 0.32).toNumber();
-
-        dc.setColor(Styles.COLOR_ACCENT, Graphics.COLOR_TRANSPARENT);
-        var labelY = (headerH * 0.26).toNumber();
-        dc.drawText(cx, labelY, Graphics.FONT_TINY, "FINISHED", centerJust);
-        var labelHalf = dc.getFontHeight(Graphics.FONT_TINY) / 2;
-        dc.fillRectangle(cx - 34, labelY + labelHalf + 2, 68, 2);
-
-        dc.setColor(Styles.COLOR_TEXT_PRIMARY, Graphics.COLOR_TRANSPARENT);
-        var totalMs = engine.totalElapsedMs(ActiveWorkoutView.nowMs());
-        dc.drawText(cx, (headerH * 0.58).toNumber(), Graphics.FONT_NUMBER_MEDIUM,
-            Styles.formatElapsedMs(totalMs), centerJust);
-
-        // Total delta — green (ahead) / red (behind), always shown.
-        var totalTargetMs = _goal[GoalStore.TARGET_TOTAL_MS] as Long;
-        var totalDeltaMs = totalMs - totalTargetMs;
-        var totalDeltaColor = totalDeltaMs > 0 ? Styles.COLOR_OVER : Styles.COLOR_UNDER;
-        dc.setColor(totalDeltaColor, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(cx, (headerH * 0.90).toNumber(), Graphics.FONT_XTINY,
-            Styles.formatDeltaMs(totalDeltaMs), centerJust);
-
-        // Thin divider between header & list
-        dc.setColor(Styles.COLOR_TEXT_TERTIARY, Graphics.COLOR_TRANSPARENT);
-        dc.fillRectangle(24, headerH, w - 48, 1);
-
-        // --- Scroll list area ---
-        var listTop = headerH + 4;
-        var listBot = h - 4;
-        var listVisH = listBot - listTop;
-        var rowH = 68;
-        _rowH = rowH;
-
-        var records = engine.records;
-        var contentH = records.size() * rowH;
-        _maxScroll = contentH > listVisH ? contentH - listVisH : 0;
-        if (_scroll > _maxScroll) { _scroll = _maxScroll; }
-
-        dc.setClip(0, listTop, w, listVisH);
-
-        for (var i = 0; i < records.size(); i += 1) {
-            var rowY = listTop + i * rowH - _scroll;
-            if (rowY + rowH < listTop || rowY > listBot) {
-                continue;  // off-screen, skip draw
+        if (_page == 0) {
+            _summary.draw(dc);
+            if (pages > 1) {
+                // More below: caption + a small down arrow.
+                Ui.text(dc, 100, 169, cap, Palette.DIM, "SPLITS", Ui.CENTER);
+                var ax = Ui.px(dc, 100);
+                var ay = Ui.px(dc, 177.5);
+                var s = Ui.px(dc, 3.5);
+                dc.setColor(Palette.DIM, Graphics.COLOR_TRANSPARENT);
+                dc.fillPolygon([[ax - s, ay], [ax + s, ay], [ax, ay + s]] as Array<Graphics.Point2D>);
             }
-            _drawRow(dc, records[i] as Dictionary, records, i, rowY, rowH, w);
+            Ui.hint(dc, false, "DONE");
+            return;
         }
 
-        dc.clearClip();
-
-        // --- Scrollbar on right edge (only when scrollable) ---
-        if (_maxScroll > 0) {
-            var trackTop = listTop + 8;
-            var trackH = listVisH - 16;
-            var barH = (trackH.toFloat() * listVisH / contentH).toNumber();
-            if (barH < 24) { barH = 24; }
-            var barY = trackTop + ((trackH - barH).toFloat() * _scroll / _maxScroll).toNumber();
-            dc.setColor(Styles.COLOR_ACCENT, Graphics.COLOR_TRANSPARENT);
-            dc.fillRoundedRectangle(w - 6, barY, 3, barH, 2);
+        var records = (engine as WorkoutEngine).records as Array;
+        Ui.text(dc, 100, 27, cap, Palette.GOLD, "SPLITS", Ui.CENTER);
+        var first = (_page - 1) * ROWS_PER_PAGE;
+        for (var row = 0; row < ROWS_PER_PAGE; row += 1) {
+            var idx = first + row;
+            if (idx >= records.size()) { break; }
+            _drawRow(dc, records, idx, 41 + row * 29, 29, row > 0);
         }
+        Ui.text(dc, 100, 172, cap, Palette.DIM,
+            _page.toString() + " / " + (pages - 1).toString(), Ui.CENTER);
     }
 
     private function _drawRow(
             dc as Graphics.Dc,
-            rec as Dictionary,
             records as Array,
             idx as Number,
-            rowY as Number,
-            rowH as Number,
-            w as Number) as Void {
+            top as Number,
+            height as Number,
+            divider as Boolean) as Void {
+        var rec = records[idx] as Dictionary;
         var type = rec[SegmentRecord.TYPE] as String;
-        var typeColor = Styles.colorForSegmentType(type);
+        var cap = Fonts.cap();
 
-        // Two-line row: top line = label + duration, bottom line = delta.
-        // Split the row with ~14 px breathing room between lines so FONT_XTINY
-        // (height ~20 px on fr965) never overlaps.
-        var y1 = rowY + rowH * 0.30;   // label/time line (center)
-        var y2 = rowY + rowH * 0.74;   // delta line (center)
-        var leftJust = Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER;
-        var rightJust = Graphics.TEXT_JUSTIFY_RIGHT | Graphics.TEXT_JUSTIFY_VCENTER;
+        // One column for every row: as wide as the first row's top edge,
+        // the narrowest point of the list on a round screen.
+        var half = Ui.halfChord(97, 41);
+        var left = 100 - half + 5;
+        var right = 100 + half - 5;
 
-        // Colored type pill at left, spans both rows.
-        dc.setColor(typeColor, Graphics.COLOR_TRANSPARENT);
-        dc.fillRoundedRectangle(14, rowY + 6, 4, rowH - 12, 2);
+        if (divider) { Ui.hairline(dc, top, left, right); }
 
-        // Top-left: label
-        var label = _rowLabel(rec, records, idx);
-        dc.setColor(Styles.COLOR_TEXT_PRIMARY, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(26, y1, Graphics.FONT_XTINY, label, leftJust);
+        var barColor = Palette.GREY;
+        if (type.equals(SegmentType.RUN)) { barColor = Palette.BLUE; }
+        if (type.equals(SegmentType.STATION)) { barColor = Palette.GOLD; }
+        dc.setColor(barColor, Graphics.COLOR_TRANSPARENT);
+        dc.fillRectangle(Ui.px(dc, left), Ui.px(dc, top + 5), Ui.px(dc, 2.5), Ui.px(dc, height - 10));
 
-        // Top-right: actual duration
+        var textLeft = left + 7;
+        var y1 = top + 9;
+        var y2 = top + 21;
         var durMs = SegmentRecord.activeDurationMs(rec);
-        dc.setColor(Styles.COLOR_TEXT_PRIMARY, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(w - 16, y1, Graphics.FONT_XTINY,
-            Styles.formatElapsedMs(durMs), rightJust);
+        Ui.text(dc, textLeft, y1, cap, Styles.COLOR_TEXT, _rowLabel(rec, records, idx), Ui.LEFT);
+        Ui.text(dc, right, y1, cap, Styles.COLOR_TEXT, Styles.formatClock(durMs), Ui.RIGHT);
 
-        // Bottom-right: delta vs target for this segment, if index is in range.
-        var targets = _goal[GoalStore.TARGET_SEGMENTS_MS] as Array<Long>;
-        if (targets != null && idx < targets.size()) {
-            var targetMs = targets[idx] as Long;
+        var targets = _goal[GoalStore.TARGET_SEGMENTS_MS] as Array?;
+        if (targets != null && idx < targets.size() && targets[idx] != null) {
+            var targetMs = (targets[idx] as Number or Long).toLong();
             var deltaMs = durMs - targetMs;
-            var deltaColor = deltaMs > 0 ? Styles.COLOR_OVER : Styles.COLOR_UNDER;
-            dc.setColor(deltaColor, Graphics.COLOR_TRANSPARENT);
-            dc.drawText(w - 16, y2, Graphics.FONT_XTINY,
-                Styles.formatDeltaMs(deltaMs), rightJust);
+            Ui.text(dc, textLeft, y2, cap, Palette.DIM,
+                "GOAL " + Styles.formatClock(targetMs), Ui.LEFT);
+            Ui.text(dc, right, y2, cap, Styles.colorForDelta(deltaMs),
+                Styles.formatDelta(deltaMs), Ui.RIGHT);
         }
     }
 
     private function _rowLabel(rec as Dictionary, records as Array, idx as Number) as String {
         var type = rec[SegmentRecord.TYPE] as String;
-        var name = rec[SegmentRecord.STATION_DISPLAY_NAME];
-        if (name != null) {
-            return (name as String).toUpper();
+        if (type.equals(SegmentType.STATION)) {
+            var segs = ((engine as WorkoutEngine).template as Dictionary)[WorkoutTemplate.SEGMENTS] as Array<Dictionary>;
+            var segIndex = rec[SegmentRecord.INDEX] as Number;
+            if (segIndex >= 0 && segIndex < segs.size()) {
+                var kind = (segs[segIndex] as Dictionary)[WorkoutSegment.STATION_KIND];
+                if (kind != null) { return StationKind.shortName(kind as String); }
+            }
+            return "STATION";
         }
         if (type.equals(SegmentType.RUN)) {
             var runIdx = 0;
@@ -216,7 +208,7 @@ class ResultView extends WatchUi.View {
             }
             return "RUN " + runIdx.toString();
         }
-        return "ROX";
+        return "ROX ZONE";
     }
 }
 
@@ -246,9 +238,9 @@ class ResultViewDelegate extends WatchUi.BehaviorDelegate {
         if (!(view instanceof ResultView)) { return true; }
         var dir = event.getDirection();
         if (dir == WatchUi.SWIPE_UP) {
-            view.scrollBy(2);
+            view.scrollBy(1);
         } else if (dir == WatchUi.SWIPE_DOWN) {
-            view.scrollBy(-2);
+            view.scrollBy(-1);
         }
         return true;
     }

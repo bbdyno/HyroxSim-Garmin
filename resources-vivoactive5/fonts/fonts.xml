@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<resources>
+    <!-- 2.0 UI fonts, baked from Roboto Black (Apache-2.0) for this display
+         size. Regenerate every size with: swift tools/numfont/build.swift
+         Number fonts are sheared for the italic and hold only "0-9 : + -". -->
+    <font id="numHero" filename="numHero.fnt" antialias="true"/>
+    <font id="numHeroSm" filename="numHeroSm.fnt" antialias="true"/>
+    <font id="numBig" filename="numBig.fnt" antialias="true"/>
+    <font id="numMid" filename="numMid.fnt" antialias="true"/>
+    <font id="txtTitle" filename="txtTitle.fnt" antialias="true"/>
+    <font id="txtCap" filename="txtCap.fnt" antialias="true"/>
+</resources>

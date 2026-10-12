@@ -43,6 +43,20 @@ module StationKind {
         return "Custom";
     }
 
+    // Compact uppercase label for the watch UI — every name fits one line
+    // of a 260 px round display.
+    function shortName(kind as String) as String {
+        if (kind.equals(SKI_ERG))             { return "SKIERG"; }
+        if (kind.equals(SLED_PUSH))           { return "SLED PUSH"; }
+        if (kind.equals(SLED_PULL))           { return "SLED PULL"; }
+        if (kind.equals(BURPEE_BROAD_JUMPS))  { return "BURPEE BJ"; }
+        if (kind.equals(ROWING))              { return "ROWING"; }
+        if (kind.equals(FARMERS_CARRY))       { return "FARMERS"; }
+        if (kind.equals(SANDBAG_LUNGES))      { return "LUNGES"; }
+        if (kind.equals(WALL_BALLS))          { return "WALL BALLS"; }
+        return "STATION";
+    }
+
     function defaultTarget(kind as String) as Dictionary {
         if (kind.equals(SKI_ERG))            { return StationTarget.distance(1000); }
         if (kind.equals(SLED_PUSH))          { return StationTarget.distance(50); }

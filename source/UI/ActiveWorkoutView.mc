@@ -16,16 +16,17 @@ import Toybox.WatchUi;
 // Main workout screen. Drives the WorkoutEngine and refreshes every tick
 // via a 500 ms Timer — matches the cadence of the iOS watch app.
 //
-// Layout (round display assumed):
-//   ┌─────────────┐
-//   │  Run 1/8    │  segment label + counter (accent color)
-//   │             │
-//   │    00:42    │  segment elapsed (large)
-//   │             │
-//   │  Total 00:42│  total elapsed (secondary)
-//   │             │
-//   │  →  SkiErg  │  next segment preview
-//   └─────────────┘
+// Layout (round display, positions in 1/200 of the diameter):
+//
+//       STATION 4 / 8        caption — blue run, gold station, white ROX
+//        [BURPEE BJ]         station name / ROX destination / paused total
+//           3:47             segment time — the hero
+//          -0:12             delta against the cumulative goal
+//       [80 M · 20 KG]       station target, or live pace on a run
+//          ♥ 162
+//
+// The bezel carries the progress ring (one block per run / station) and
+// two button hints: NEXT at START/STOP, MENU at BACK.
 class ActiveWorkoutView extends WatchUi.View {
 
     public var engine;           // WorkoutEngine
@@ -33,23 +34,59 @@ class ActiveWorkoutView extends WatchUi.View {
     public var recorder;         // ActivityRecorder
     public var goal;             // resolved goal Dictionary or null when free-tier
     public var hasExplicitGoal;  // true only when phone-pushed goal is active
+    public var hrOverride as Number?;   // fixed BPM for screenshots (debug builds)
     private var _tickTimer;      // Toybox.Timer.Timer
     private var _submitted = false;
+
+    // Per-template lookups, built once.
+    private var _blockMap as Array<Number>;
+    private var _ordinals as Array<Number>;     // 1-based position within its type
+    private var _runTotal as Number;
+    private var _stationTotal as Number;
+
+    // Everything below changes only when the segment changes — rebuilt by
+    // _refreshCache() so onUpdate() stays cheap.
+    private var _cacheKey as Number;
+    private var _states as Array<Number>;
+    private var _caption as String;
+    private var _captionColor as Number;
+    private var _name as String?;
+    private var _nameIsTitle as Boolean;
+    private var _foot as String?;
+    private var _isRun as Boolean;
+    private var _isLast as Boolean;
+    private var _summary as ResultSummary?;
 
     function initialize(template as Dictionary) {
         View.initialize();
         engine = new WorkoutEngine(template);
         hrProvider = new HeartRateProvider(engine);
         recorder = new ActivityRecorder();
+        hrOverride = null;
         // Goal resolution: use phone-pushed goal if division matches, else
         // fall back to PaceReference defaults so delta is always shown.
-        // `hasExplicitGoal` drives UI emphasis (bright red/green when paired
-        // vs dim grey when estimated).
         var storedGoal = GoalStore.load();
-        hasExplicitGoal = (storedGoal != null
-                && (storedGoal[GoalStore.DIVISION] as String).equals(
-                    template[WorkoutTemplate.DIVISION] as String));
+        var division = template[WorkoutTemplate.DIVISION];
+        hasExplicitGoal = (storedGoal != null && division != null
+                && (storedGoal[GoalStore.DIVISION] as String).equals(division as String));
         goal = GoalStore.resolve(template);
+
+        _blockMap = [] as Array<Number>;
+        _ordinals = [] as Array<Number>;
+        _runTotal = 0;
+        _stationTotal = 0;
+        _cacheKey = -1;
+        _states = [] as Array<Number>;
+        _caption = "";
+        _captionColor = Styles.COLOR_TEXT;
+        _name = null;
+        _nameIsTitle = false;
+        _foot = null;
+        _isRun = false;
+        _isLast = false;
+        _summary = null;
+        _indexTemplate();
+
         engine.start(ActiveWorkoutView.nowMs());
         hrProvider.enable();
         // Register so HyroxSimApp.onLocation can route GPS fixes into
@@ -64,6 +101,20 @@ class ActiveWorkoutView extends WatchUi.View {
         if (PairingStore.isPaired()) {
             recorder.start();
         }
+    }
+
+    // Screenshot hook: swap in an engine that is already mid-race.
+    (:debug)
+    function adoptEngine(eng as WorkoutEngine) as Void {
+        // Canned data must never reach Garmin Connect or the phone outbox
+        // (the simulator also blocks on a FIT save dialog at app exit).
+        if (recorder.isActive()) { recorder.discard(); }
+        _submitted = true;
+        engine = eng;
+        hrProvider = new HeartRateProvider(eng);
+        getApp().activeEngine = eng;
+        _cacheKey = -1;
+        _summary = null;
     }
 
     function onShow() as Void {
@@ -138,264 +189,219 @@ class ActiveWorkoutView extends WatchUi.View {
         WatchUi.requestUpdate();
     }
 
+    // Stops GPS fixes and the app-shutdown safety net from reaching this
+    // view once the workout has been ended from the menu.
+    function detachFromApp() as Void {
+        var app = getApp();
+        if (app.activeEngine == engine) { app.activeEngine = null; }
+        if (app.activeView == self) { app.activeView = null; }
+    }
+
+    // A discarded workout must never be queued for the phone.
+    function markDiscarded() as Void {
+        _submitted = true;
+    }
+
+    // MARK: - Drawing
+
     function onUpdate(dc as Graphics.Dc) as Void {
-        dc.setColor(Styles.COLOR_TEXT_PRIMARY, Styles.COLOR_BACKGROUND);
-        dc.clear();
-        dc.setAntiAlias(true);
+        Ui.clear(dc);
+        var eng = engine as WorkoutEngine;
 
-        var w = dc.getWidth();
-        var h = dc.getHeight();
-        var cx = w / 2;
-
-        if (engine.isFinished()) {
-            _drawFinished(dc, cx, h);
+        if (eng.isFinished()) {
+            // Natural finish: the summary stays up until SELECT/BACK saves.
+            if (_summary == null) {
+                _summary = new ResultSummary(eng, goal as Dictionary);
+            }
+            (_summary as ResultSummary).draw(dc);
+            Ui.hint(dc, true, "SAVE");
             return;
         }
 
-        var segment = engine.currentSegment();
-        if (segment == null) { return; }
-        var type = segment[WorkoutSegment.TYPE] as String;
-        var accent = Styles.colorForSegmentType(type);
+        var index = eng.currentSegmentIndex();
+        if (index == null) { return; }
+        _refreshCache(dc, eng, index);
 
         var nowMs = ActiveWorkoutView.nowMs();
-        var segElapsed = engine.segmentElapsedMs(nowMs);
-        var totElapsed = engine.totalElapsedMs(nowMs);
+        var paused = EngineState.is(eng.state, EngineState.KIND_PAUSED);
+        var cap = Fonts.cap();
 
-        var centerJust = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
-        var leftJust   = Graphics.TEXT_JUSTIFY_LEFT   | Graphics.TEXT_JUSTIFY_VCENTER;
-        var rightJust  = Graphics.TEXT_JUSTIFY_RIGHT  | Graphics.TEXT_JUSTIFY_VCENTER;
+        Ring.draw(dc, _states, _states.size(), null);
 
-        // Vertical positions — fractions of screen height so layout scales
-        // across FR265 / FR965 without absolute offsets.
-        var yDelta  = (h * 0.12).toNumber();
-        var yLabel  = (h * 0.24).toNumber();
-        var yTimer  = (h * 0.48).toNumber();
-        var yHR     = (h * 0.68).toNumber();
-        var yTotal  = (h * 0.78).toNumber();
-        var yNext   = (h * 0.87).toNumber();
-        var yBar    = (h * 0.93).toNumber();
+        // Button hints. SELECT does nothing while paused, so no NEXT then.
+        if (!paused) {
+            Ui.hint(dc, true, _isLast ? "DONE" : "NEXT");
+        }
+        var menuLeft = Ui.hint(dc, false, "MENU");
 
-        // Delta: always shown. Sign drives color — negative (ahead of target)
-        // is green, positive (behind) is red. No dim-for-estimate variant;
-        // whether the goal is phone-pushed or a PaceReference estimate is
-        // conveyed elsewhere (history screen) not here.
-        var delta = DeltaCalculator.totalDeltaMs(engine, goal, nowMs);
-        var deltaColor = delta > 0 ? Styles.COLOR_OVER : Styles.COLOR_UNDER;
-        dc.setColor(deltaColor, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(cx, yDelta, Graphics.FONT_XTINY,
-            Styles.formatDeltaMs(delta), centerJust);
+        // Header: caption, plus one line under it for everything but a run
+        // (station name, ROX destination, or the total while paused).
+        var second = _name;
+        var secondIsTitle = _nameIsTitle;
+        if (paused) {
+            second = "TOTAL " + Styles.formatClock(eng.totalElapsedMs(nowMs));
+            secondIsTitle = false;
+        }
+        var heroY = 96;
+        if (second != null) {
+            heroY = 101;
+            Ui.text(dc, 100, 31, cap, paused ? Palette.GOLD : _captionColor,
+                paused ? "PAUSED" : _caption, Ui.CENTER);
+            Ui.text(dc, 100, 46.5, secondIsTitle ? Fonts.title() : cap,
+                secondIsTitle ? Styles.COLOR_TEXT : Palette.GREY,
+                second as String, Ui.CENTER);
+        } else {
+            Ui.text(dc, 100, 42, cap, _captionColor, _caption, Ui.CENTER);
+        }
 
-        // Segment label — colored by type, with short accent underline.
-        var label = segmentLabel(segment);
-        dc.setColor(accent, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(cx, yLabel, Graphics.FONT_MEDIUM, label, centerJust);
-        var labelHalf = dc.getFontHeight(Graphics.FONT_MEDIUM) / 2;
-        dc.fillRectangle(cx - 32, yLabel + labelHalf + 3, 64, 2);
+        // Hero: segment time. Longer strings step down a size so the
+        // digits never reach the ring.
+        var clock = Styles.formatClock(eng.segmentElapsedMs(nowMs));
+        var len = clock.length();
+        var heroFont = len <= 4 ? Fonts.hero() : (len == 5 ? Fonts.heroSm() : Fonts.big());
+        Ui.text(dc, 100, heroY, heroFont,
+            paused ? Palette.GREY : Styles.COLOR_TEXT, clock, Ui.CENTER);
 
-        // Main elapsed timer — FONT_NUMBER_HOT instead of THAI_HOT to leave
-        // vertical room for HR + total below on the round display.
-        dc.setColor(Styles.COLOR_TEXT_PRIMARY, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(cx, yTimer, Graphics.FONT_NUMBER_HOT,
-            Styles.formatElapsedMs(segElapsed), centerJust);
+        // Delta against the cumulative goal — gold ahead, orange behind.
+        // A very long delta slides left rather than run under the MENU tab.
+        var delta = DeltaCalculator.totalDeltaMs(eng, goal as Dictionary, nowMs);
+        var deltaText = Styles.formatDelta(delta);
+        var mid = Fonts.mid();
+        var deltaX = Ui.px(dc, 100);
+        var deltaHalf = dc.getTextWidthInPixels(deltaText, mid) / 2;
+        var deltaLimit = menuLeft - Ui.px(dc, 3);
+        if (deltaX + deltaHalf > deltaLimit) { deltaX = deltaLimit - deltaHalf; }
+        dc.setColor(Styles.colorForDelta(delta), Graphics.COLOR_TRANSPARENT);
+        dc.drawText(deltaX, Ui.px(dc, heroY + 45), mid, deltaText, Ui.CENTER);
 
-        // HR + pace row. On Run segments we always show a pace slot (with
-        // "--" while GPS is still acquiring). Otherwise HR centered.
-        var info = Activity.getActivityInfo();
-        var bpm = info != null ? info.currentHeartRate : null;
+        // Footer: station target (or live pace on a run) above heart rate.
+        var foot = _foot;
+        if (_isRun) { foot = _paceText(); }
+        var bpm = hrOverride;
+        if (bpm == null) {
+            var info = Activity.getActivityInfo();
+            if (info != null) { bpm = info.currentHeartRate; }
+        }
+        var hrText = "\u2665 " + (bpm != null ? bpm.toString() : "--");
+        if (foot != null) {
+            Ui.text(dc, 100, heroY + 65, cap, Palette.GREY, foot, Ui.CENTER);
+            Ui.text(dc, 100, heroY + 78.5, cap, Styles.COLOR_TEXT, hrText, Ui.CENTER);
+        } else {
+            Ui.text(dc, 100, heroY + 73, cap, Styles.COLOR_TEXT, hrText, Ui.CENTER);
+        }
+    }
+
+    // Counts runs / stations once so captions can say "RUN 4 / 8".
+    private function _indexTemplate() as Void {
+        var segs = ((engine as WorkoutEngine).template as Dictionary)[WorkoutTemplate.SEGMENTS] as Array<Dictionary>;
+        _blockMap = RingModel.blockMap(segs);
+        _ordinals = new Array<Number>[segs.size()];
+        _runTotal = 0;
+        _stationTotal = 0;
+        for (var i = 0; i < segs.size(); i += 1) {
+            var type = (segs[i] as Dictionary)[WorkoutSegment.TYPE] as String;
+            if (type.equals(SegmentType.RUN)) {
+                _runTotal += 1;
+                _ordinals[i] = _runTotal;
+            } else if (type.equals(SegmentType.STATION)) {
+                _stationTotal += 1;
+                _ordinals[i] = _stationTotal;
+            } else {
+                _ordinals[i] = 0;
+            }
+        }
+    }
+
+    // Rebuilds ring states and static labels when the segment changed.
+    private function _refreshCache(dc as Graphics.Dc, eng as WorkoutEngine, index as Number) as Void {
+        var key = index * 1000 + eng.records.size();
+        if (key == _cacheKey) { return; }
+        _cacheKey = key;
+
+        var segs = (eng.template as Dictionary)[WorkoutTemplate.SEGMENTS] as Array<Dictionary>;
+        var seg = segs[index] as Dictionary;
+        var type = seg[WorkoutSegment.TYPE] as String;
+        var targets = (goal as Dictionary)[GoalStore.TARGET_SEGMENTS_MS] as Array?;
+        _states = RingModel.blockStates(
+            _blockMap, RingModel.durations(eng.records as Array), targets, index);
+
+        _captionColor = Styles.colorForSegmentType(type);
+        _isRun = type.equals(SegmentType.RUN);
+        _isLast = index >= segs.size() - 1;
+        _name = null;
+        _nameIsTitle = false;
+        _foot = null;
+
+        if (_isRun) {
+            _caption = _countCaption("RUN", _ordinals[index], _runTotal);
+        } else if (type.equals(SegmentType.STATION)) {
+            _caption = _countCaption("STATION", _ordinals[index], _stationTotal);
+            _name = Ui.fit(dc, shortLabel(seg), Fonts.title(), Ui.px(dc, 128));
+            _nameIsTitle = true;
+            _foot = _targetText(dc, seg);
+        } else {
+            _caption = "ROX ZONE";
+            if (index + 1 < segs.size()) {
+                var next = segs[index + 1] as Dictionary;
+                var nextType = next[WorkoutSegment.TYPE] as String;
+                if (nextType.equals(SegmentType.RUN)) {
+                    _name = "TO RUN " + _ordinals[index + 1].toString();
+                } else if (nextType.equals(SegmentType.STATION)) {
+                    _name = Ui.fit(dc, "TO " + shortLabel(next), Fonts.cap(), Ui.px(dc, 128));
+                }
+            }
+        }
+    }
+
+    // "STATION 4 / 8". Two-digit counts (long custom workouts) lose the
+    // spaces so the caption still clears the ring.
+    private function _countCaption(word as String, ordinal as Number, total as Number) as String {
+        var sep = total >= 10 ? "/" : " / ";
+        return word + " " + ordinal.toString() + sep + total.toString();
+    }
+
+    // "80 M · 20 KG" — the weight is dropped when the line would not fit
+    // the narrow bottom of the round screen.
+    private function _targetText(dc as Graphics.Dc, seg as Dictionary) as String? {
+        var target = seg[WorkoutSegment.STATION_TARGET];
+        if (target == null) { return null; }
+        var kind = (target as Dictionary)[StationTarget.KIND] as String;
+        if (kind.equals(StationTarget.KIND_NONE)) { return null; }
+        var text = StationTarget.formatted(target as Dictionary).toUpper();
+        var weight = seg[WorkoutSegment.WEIGHT_KG];
+        if (weight != null) {
+            var full = text + " · " + (weight as Numeric).format("%d") + " KG";
+            if (dc.getTextWidthInPixels(full, Fonts.cap()) <= Ui.px(dc, 108)) {
+                return full;
+            }
+        }
+        return text;
+    }
+
+    // Live pace on a run, null until GPS has a usable fix.
+    private function _paceText() as String? {
         var app = getApp();
-        var speedMps = app.gpsSpeedMps;
-        var isRun = type.equals(SegmentType.RUN);
-        var showPace = isRun;
-        var paceStr;
-        if (isRun && speedMps != null && speedMps > 0.3 && app.gpsReady()) {
-            paceStr = _formatPace(speedMps) + " /km";
-        } else if (isRun) {
-            paceStr = "-- /km";
-        } else {
-            paceStr = "";
-        }
-
-        var hrText = bpm != null ? bpm.toString() : "--";
-        var hrColor = bpm != null ? Styles.COLOR_HEART : Styles.COLOR_TEXT_TERTIARY;
-
-        if (showPace) {
-            _drawHRWithIcon(dc, (w * 0.28).toNumber(), yHR,
-                hrText, hrColor, Graphics.FONT_XTINY, leftJust);
-            var paceColor = app.gpsReady()
-                ? Styles.COLOR_TEXT_PRIMARY
-                : Styles.COLOR_TEXT_TERTIARY;
-            dc.setColor(paceColor, Graphics.COLOR_TRANSPARENT);
-            dc.drawText((w * 0.72).toNumber(), yHR, Graphics.FONT_XTINY,
-                paceStr, rightJust);
-        } else {
-            _drawHRWithIcon(dc, cx, yHR,
-                hrText, hrColor, Graphics.FONT_TINY, centerJust);
-        }
-
-        // GPS indicator — satellite icon above the delta, tinted by quality.
-        var gpsColor = app.gpsReady()
-            ? Styles.COLOR_UNDER                 // green when locked
-            : (app.gpsQuality >= 2
-                ? Styles.COLOR_ACCENT            // gold when poor
-                : Styles.COLOR_TEXT_TERTIARY);   // grey when no signal
-        dc.setColor(gpsColor, Graphics.COLOR_TRANSPARENT);
-        dc.drawText((w * 0.20).toNumber(), yDelta, IconFont.get(),
-            IconFont.SATELLITE, centerJust);
-
-        // Total elapsed — secondary.
-        dc.setColor(Styles.COLOR_TEXT_SECOND, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(cx, yTotal, Graphics.FONT_XTINY,
-            "TOTAL  " + Styles.formatElapsedMs(totElapsed), centerJust);
-
-        // Next segment preview — faded.
-        var next = engine.nextSegment();
-        if (next != null) {
-            dc.setColor(Styles.COLOR_TEXT_TERTIARY, Graphics.COLOR_TRANSPARENT);
-            dc.drawText(cx, yNext, Graphics.FONT_XTINY,
-                "NEXT  " + segmentLabel(next), centerJust);
-        }
-
-        _drawProgressBar(dc, w, yBar, accent);
-
-        // Paused overlay — covers HR/total/next all at once with a clear
-        // status so the user isn't confused by stale timers.
-        if (EngineState.is(engine.state, EngineState.KIND_PAUSED)) {
-            dc.setColor(Styles.COLOR_BACKGROUND, Graphics.COLOR_TRANSPARENT);
-            dc.fillRectangle(0, yHR - 20, w, yBar - yHR + 20);
-            dc.setColor(Styles.COLOR_OVER, Graphics.COLOR_TRANSPARENT);
-            dc.drawText(cx, (yHR + yNext) / 2, Graphics.FONT_MEDIUM,
-                "PAUSED", centerJust);
-        }
+        var speed = app.gpsSpeedMps;
+        if (speed == null || !app.gpsReady() || (speed as Float) <= 0.3) { return null; }
+        var secPerKm = (1000.0 / (speed as Float)).toNumber();
+        return (secPerKm / 60).toString() + ":" + (secPerKm % 60).format("%02d") + " /KM";
     }
 
-    // Horizontal progress bar — how many of the N segments are done (idx+0.5
-    // contribution for the current segment to give visible motion even when
-    // between completed boundaries). Uses the CURRENT segment's accent color
-    // so the whole screen stays visually tied to the active phase.
-    private function _drawProgressBar(
-            dc as Graphics.Dc,
-            w as Number,
-            y as Number,
-            accent as Number) as Void {
-        var segs = engine.template[WorkoutTemplate.SEGMENTS] as Array<Dictionary>;
-        var n = segs.size();
-        if (n == 0) { return; }
-
-        var idx = engine.currentSegmentIndex();
-        if (idx == null) { idx = 0; }
-        var frac = (idx.toFloat() + 0.5) / n.toFloat();
-        if (frac < 0.0) { frac = 0.0; }
-        if (frac > 1.0) { frac = 1.0; }
-
-        var barW = (w * 0.62).toNumber();
-        var barH = 4;
-        var barX = (w - barW) / 2;
-
-        dc.setColor(Styles.COLOR_SURFACE, Graphics.COLOR_TRANSPARENT);
-        dc.fillRoundedRectangle(barX, y, barW, barH, 2);
-
-        var fillW = (barW * frac).toNumber();
-        if (fillW < 4) { fillW = 4; }
-        dc.setColor(accent, Graphics.COLOR_TRANSPARENT);
-        dc.fillRoundedRectangle(barX, y, fillW, barH, 2);
-    }
-
-    function _drawFinished(dc as Graphics.Dc, cx as Number, h as Number) as Void {
-        var centerJust = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
-        dc.setColor(Styles.COLOR_ACCENT, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(cx, (h * 0.26).toNumber(), Graphics.FONT_MEDIUM,
-            "FINISHED", centerJust);
-        // Gold underline for consistency with in-workout label.
-        dc.fillRectangle(cx - 40, (h * 0.26).toNumber() + dc.getFontHeight(Graphics.FONT_MEDIUM) / 2 + 2, 80, 2);
-
-        dc.setColor(Styles.COLOR_TEXT_PRIMARY, Graphics.COLOR_TRANSPARENT);
-        var total = engine.totalElapsedMs(ActiveWorkoutView.nowMs());
-        dc.drawText(cx, (h * 0.54).toNumber(), Graphics.FONT_NUMBER_THAI_HOT,
-            Styles.formatElapsedMs(total), centerJust);
-
-        dc.setColor(Styles.COLOR_TEXT_TERTIARY, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(cx, (h * 0.84).toNumber(), Graphics.FONT_XTINY,
-            "PRESS BACK", centerJust);
+    // Short uppercase label for a station segment.
+    function shortLabel(segment as Dictionary) as String {
+        var kind = segment[WorkoutSegment.STATION_KIND];
+        if (kind == null) { return "STATION"; }
+        return StationKind.shortName(kind as String);
     }
 
     function segmentLabel(segment as Dictionary) as String {
         var type = segment[WorkoutSegment.TYPE] as String;
-        if (type.equals(SegmentType.STATION)) {
-            var kind = segment[WorkoutSegment.STATION_KIND] as String;
-            return StationKind.displayName(kind).toUpper();
-        }
-        if (type.equals(SegmentType.ROX_ZONE)) {
-            return "ROX ZONE";
-        }
-        // Run: include index (1/8 based on run count so far)
-        return "RUN " + _runCounter(segment) + "/8";
-    }
-
-    function _runCounter(targetSegment as Dictionary) as String {
-        // Count run segments up to and including the segment we're
-        // labelling — NOT the engine's current index. Using currentIndex
-        // here breaks the "NEXT" preview, because it would label the
-        // upcoming run with the previous run's number.
-        var segs = engine.template[WorkoutTemplate.SEGMENTS] as Array<Dictionary>;
-        var targetId = targetSegment[WorkoutSegment.ID];
-        var count = 0;
-        for (var i = 0; i < segs.size(); i += 1) {
-            var s = segs[i] as Dictionary;
-            if ((s[WorkoutSegment.TYPE] as String).equals(SegmentType.RUN)) {
-                count += 1;
-            }
-            if (s[WorkoutSegment.ID].equals(targetId)) {
-                return count.toString();
-            }
-        }
-        return "?";
+        if (type.equals(SegmentType.STATION)) { return shortLabel(segment); }
+        if (type.equals(SegmentType.ROX_ZONE)) { return "ROX ZONE"; }
+        return "RUN";
     }
 
     static function nowMs() as Long {
         return Clock.nowMs();
-    }
-
-    // Converts instantaneous speed (m/s) into "M:SS" pace per km.
-    // Caller is responsible for null / zero-speed filtering so this stays
-    // pure arithmetic and never crashes on divide-by-zero.
-    private function _formatPace(speedMps as Float) as String {
-        var secPerKm = (1000.0 / speedMps).toNumber();
-        var m = secPerKm / 60;
-        var s = secPerKm % 60;
-        return m.toString() + ":" + s.format("%02d");
-    }
-
-    // Draws "♥ 152" — heart icon + BPM value. The icon and the number
-    // use different fonts so they render crisply at their native sizes
-    // (icon font is rasterised at 28 px).
-    private function _drawHRWithIcon(
-            dc as Graphics.Dc,
-            anchorX as Number,
-            y as Number,
-            hrText as String,
-            hrColor as Number,
-            textFont,
-            just as Number) as Void {
-        var iconFont = IconFont.get();
-        var iconW = dc.getTextWidthInPixels(IconFont.HEART, iconFont);
-        var textW = dc.getTextWidthInPixels(hrText, textFont);
-        var gap = 6;
-        var totalW = iconW + gap + textW;
-
-        // Resolve left edge from caller justification.
-        var leftX;
-        if ((just & Graphics.TEXT_JUSTIFY_CENTER) != 0) {
-            leftX = anchorX - totalW / 2;
-        } else if ((just & Graphics.TEXT_JUSTIFY_RIGHT) != 0) {
-            leftX = anchorX - totalW;
-        } else {
-            leftX = anchorX;
-        }
-
-        dc.setColor(hrColor, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(leftX, y, iconFont, IconFont.HEART,
-            Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER);
-        dc.drawText(leftX + iconW + gap, y, textFont, hrText,
-            Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER);
     }
 }

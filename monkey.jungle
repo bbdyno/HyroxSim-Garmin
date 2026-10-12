@@ -3,10 +3,17 @@ project.manifest = manifest.xml
 base.sourcePath = source
 base.resourcePath = resources
 
-# Per-device launcher icon overrides. The default `resources/drawables/`
-# ships a 65×65 icon (correct for fr965 + fenix847mm). Devices with a
-# different launcher size pull their override from a `resources-<device>/`
-# folder so monkeyc doesn't auto-scale and emit a fitness warning.
+# Per-device resource overrides. The default `resources/` folder is sized
+# for the 454 px displays (fr965, fenix847mm): a 65×65 launcher icon and UI
+# fonts baked for that diameter. Devices with another screen size pull their
+# own launcher icon and font set from `resources-<device>/`.
 fr265.resourcePath        = $(base.resourcePath);resources-fr265
 fenix7.resourcePath       = $(base.resourcePath);resources-fenix7
 vivoactive5.resourcePath  = $(base.resourcePath);resources-vivoactive5
+
+# Colour palette (source/UI/Styles.mc): AMOLED devices get the brand
+# colours, the 64-colour MIP fenix 7 gets colours its panel can show.
+# tools/screenshots/shots.jungle repeats this file for screenshot builds —
+# keep the two in step.
+base.excludeAnnotations   = mip
+fenix7.excludeAnnotations = amoled

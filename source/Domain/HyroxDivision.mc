@@ -53,4 +53,22 @@ module HyroxDivision {
         if (division.equals(MIXED_DOUBLE))       { return "Mixed 2x"; }
         return "?";
     }
+
+    // Uppercase list labels for the watch UI ("MEN OPEN" + "SINGLES").
+    function categoryLabel(division as String) as String {
+        if (division.equals(MEN_OPEN_SINGLE) || division.equals(MEN_OPEN_DOUBLE))     { return "MEN OPEN"; }
+        if (division.equals(MEN_PRO_SINGLE) || division.equals(MEN_PRO_DOUBLE))       { return "MEN PRO"; }
+        if (division.equals(WOMEN_OPEN_SINGLE) || division.equals(WOMEN_OPEN_DOUBLE)) { return "WOMEN OPEN"; }
+        if (division.equals(WOMEN_PRO_SINGLE) || division.equals(WOMEN_PRO_DOUBLE))   { return "WOMEN PRO"; }
+        if (division.equals(MIXED_DOUBLE))                                            { return "MIXED"; }
+        return "HYROX";
+    }
+
+    function formatLabel(division as String) as String {
+        if (division.equals(MEN_OPEN_SINGLE) || division.equals(MEN_PRO_SINGLE)
+                || division.equals(WOMEN_OPEN_SINGLE) || division.equals(WOMEN_PRO_SINGLE)) {
+            return "SINGLES";
+        }
+        return "DOUBLES";
+    }
 }
