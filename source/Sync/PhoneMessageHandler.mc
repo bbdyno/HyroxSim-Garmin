@@ -34,6 +34,9 @@ class PhoneMessageHandler {
 
     function register() as Void {
         if (_registered) { return; }
+        // Debug / unit-test builds run in the simulator, which has no phone
+        // and pops a "no data connection" alert on every transmit.
+        if (!phoneLinkEnabled()) { return; }
         Communications.registerForPhoneAppMessages(method(:onPhoneMessage));
         _registered = true;
         _sendSyncRequest();
@@ -128,6 +131,8 @@ class PhoneMessageHandler {
     // because the transmit queue is short and rejects a burst.
     function flushOutbox() as Void {
         if (_sending) { return; }
+        // No phone link (debug build): leave everything in the outbox.
+        if (!phoneLinkEnabled()) { return; }
         var entries = WorkoutStorage.list();
         _sendQueue = [];
         for (var i = 0; i < entries.size(); i += 1) {
@@ -225,6 +230,7 @@ class PhoneMessageHandler {
     }
 
     function _transmit(env as Dictionary) as Void {
+        if (!phoneLinkEnabled()) { return; }
         try {
             Communications.transmit(
                 env,
@@ -260,4 +266,18 @@ class PhoneTransmitListener extends Communications.ConnectionListener {
     function onError() as Void {
         // Swallow — entry remains in outbox and will retry on next hello.
     }
+}
+
+// Phone link switch. Release builds (store .iq, `RELEASE=1 scripts/build.sh`)
+// always talk to the phone. Debug and unit-test builds never do: they run in
+// the Connect IQ simulator, where every Communications.transmit raises a
+// blocking "There is no data connection" alert.
+(:release)
+function phoneLinkEnabled() as Boolean {
+    return true;
+}
+
+(:debug)
+function phoneLinkEnabled() as Boolean {
+    return false;
 }

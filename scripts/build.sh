@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build HyroxSim Garmin app for a specific device.
 # Usage: ./scripts/build.sh [device_id]
+#   RELEASE=1 ./scripts/build.sh <device>   release build for a real watch
 #   device_id: fr265 (default), fr965
 
 set -euo pipefail
@@ -53,6 +54,11 @@ MONKEYC_ARGS=(
     --private-key "$KEY"
     --warn
 )
+# RELEASE=1 strips debug code. Use it for a real watch: debug builds keep
+# the phone link switched off (the simulator alerts on every transmit).
+if [[ "${RELEASE:-0}" == "1" ]]; then
+    MONKEYC_ARGS+=(--release)
+fi
 if [[ "${UNIT_TEST:-0}" == "1" ]]; then
     MONKEYC_ARGS+=(--unit-test)
 fi
