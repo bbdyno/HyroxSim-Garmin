@@ -21,3 +21,6 @@ developer_key_release.der
 
 # SDK cache
 .monkey-cache/
+
+# Screenshot build scratch (tools/screenshots/shoot.sh)
+tools/screenshots/gen/

@@ -196,9 +196,23 @@ class HyroxSimApp extends Application.AppBase {
         // goal deltas, phone history sync) are naturally gated by whether
         // the phone has pushed data — the watch never fakes a goal or template.
         // See PairingStore / GoalStore / TemplateStore for individual checks.
+        var debugView = debugInitialView();
+        if (debugView != null) { return debugView; }
         var home = new HomeView();
         return [home, new WheelDelegate(home)];
     }
+}
+
+// Screenshot hook (source/Debug/DebugLaunch.mc). Release builds compile the
+// stub below and contain none of the debug code.
+(:debug)
+function debugInitialView() as [WatchUi.Views] or [WatchUi.Views, WatchUi.InputDelegates] or Null {
+    return DebugLaunch.initialView();
+}
+
+(:release)
+function debugInitialView() as [WatchUi.Views] or [WatchUi.Views, WatchUi.InputDelegates] or Null {
+    return null;
 }
 
 function getApp() as HyroxSimApp {

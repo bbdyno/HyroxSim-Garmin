@@ -1,0 +1,14 @@
+# Screenshot builds — see shoot.sh. Same as ../../monkey.jungle, plus the
+# generated `gen/DebugScreen.mc` that names the screen to launch into
+# (`noShot` removes the default "no screen" DebugScreen from the build).
+project.manifest = ../../manifest.xml
+
+base.sourcePath = ../../source;gen
+base.resourcePath = ../../resources
+
+fr265.resourcePath        = $(base.resourcePath);../../resources-fr265
+fenix7.resourcePath       = $(base.resourcePath);../../resources-fenix7
+vivoactive5.resourcePath  = $(base.resourcePath);../../resources-vivoactive5
+
+base.excludeAnnotations   = mip;noShot
+fenix7.excludeAnnotations = amoled;noShot
