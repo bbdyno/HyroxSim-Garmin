@@ -46,7 +46,7 @@ class HeartRateProvider {
         if (info == null) { return; }
         var bpm = info.currentHeartRate;
         if (bpm == null) { return; }
-        var t = Time.now().value().toLong() * 1000l;
+        var t = Clock.nowMs();
         engine.ingestHeartRate(t, bpm);
     }
 }

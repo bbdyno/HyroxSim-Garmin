@@ -33,6 +33,11 @@ module MessageProtocol {
     // Types — watch → phone
     const T_HELLO_ACK           = "hello.ack";
     const T_WORKOUT_COMPLETED   = "workout.completed";
+    // One part of a workout too large for a single message. Carries
+    // `chunk: { i, n }`. A distinct type (rather than `workout.completed`
+    // + chunk) so a phone app that predates parts ignores it instead of
+    // importing part 0 as a complete, truncated workout.
+    const T_WORKOUT_PART        = "workout.completed.part";
     const T_LIVE_STATE          = "live.state";
     const T_ACK                 = "ack";
     // Watch app boot ping. Equivalent to hello.ack semantically — tells the

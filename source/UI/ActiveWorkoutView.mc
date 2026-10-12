@@ -34,6 +34,7 @@ class ActiveWorkoutView extends WatchUi.View {
     public var goal;             // resolved goal Dictionary or null when free-tier
     public var hasExplicitGoal;  // true only when phone-pushed goal is active
     private var _tickTimer;      // Toybox.Timer.Timer
+    private var _submitted = false;
 
     function initialize(template as Dictionary) {
         View.initialize();
@@ -55,6 +56,7 @@ class ActiveWorkoutView extends WatchUi.View {
         // engine.ingestLocation. Cleared in finalizeOnExit so a stale
         // engine reference never receives samples after the view is gone.
         getApp().activeEngine = engine;
+        getApp().activeView = self;
         // Only write to the Garmin Activity/FIT pipeline when the user has
         // paired the companion app. Unpaired installs run as a private
         // stopwatch — data stays on the watch and never surfaces in Garmin
@@ -93,17 +95,42 @@ class ActiveWorkoutView extends WatchUi.View {
         hrProvider.disable();
         var app = getApp();
         if (app.activeEngine == engine) { app.activeEngine = null; }
-        if (recorder.isActive()) {
-            recorder.stop();
-            if (engine.isFinished()) {
-                var encoded = CompletedWorkoutCodec.encode(engine, "garmin");
-                if (app.phoneHandler != null) {
-                    app.phoneHandler.submitCompletedWorkout(encoded);
-                } else {
-                    WorkoutStorage.enqueue(encoded);
-                }
+        if (app.activeView == self) { app.activeView = null; }
+        if (recorder.isActive()) { recorder.stop(); }
+        submitIfFinished();
+    }
+
+    // Hands the finished workout to the phone outbox exactly once. Every
+    // exit path (End menu, natural finish, app shutdown) funnels through
+    // here, so a workout is neither queued twice nor skipped — it used to
+    // be skipped entirely on a natural finish when the FIT recorder was
+    // not running.
+    function submitIfFinished() as Void {
+        if (_submitted || !engine.isFinished()) { return; }
+        _submitted = true;
+        try {
+            var encoded = CompletedWorkoutCodec.encode(engine, "garmin");
+            var app = getApp();
+            if (app.phoneHandler != null) {
+                app.phoneHandler.submitCompletedWorkout(encoded);
+            } else {
+                WorkoutStorage.enqueue(encoded);
             }
+        } catch (ex) {
+            System.println("submit failed: " + ex.getErrorMessage());
         }
+    }
+
+    // App is being torn down mid-workout (system kill, low battery, user
+    // quitting from the system menu). Close out what was recorded so the
+    // session is not lost.
+    function saveOnAppStop() as Void {
+        try {
+            if (!engine.isFinished()) { engine.finish(ActiveWorkoutView.nowMs()); }
+        } catch (ex) {
+            // Idle engine — nothing recorded.
+        }
+        finalizeOnExit();
     }
 
     function onTick() as Void {
@@ -325,7 +352,7 @@ class ActiveWorkoutView extends WatchUi.View {
     }
 
     static function nowMs() as Long {
-        return Time.now().value().toLong() * 1000l;
+        return Clock.nowMs();
     }
 
     // Converts instantaneous speed (m/s) into "M:SS" pace per km.

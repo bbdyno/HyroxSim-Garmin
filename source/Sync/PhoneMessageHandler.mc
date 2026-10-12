@@ -21,9 +21,15 @@ import Toybox.System;
 class PhoneMessageHandler {
 
     private var _registered;
+    // Outbox parts waiting to go out: [ { "id", "i", "n" }, ... ]. Payloads
+    // stay in storage until their turn so the queue itself costs nothing.
+    private var _sendQueue;
+    private var _sending;
 
     function initialize() {
         _registered = false;
+        _sendQueue = [];
+        _sending = false;
     }
 
     function register() as Void {
@@ -117,18 +123,64 @@ class PhoneMessageHandler {
         return engine != null && !engine.isFinished();
     }
 
+    // Queues every unsynced part and starts sending. Parts go out one at a
+    // time — the next is transmitted only when the previous one completes —
+    // because the transmit queue is short and rejects a burst.
     function flushOutbox() as Void {
+        if (_sending) { return; }
         var entries = WorkoutStorage.list();
+        _sendQueue = [];
         for (var i = 0; i < entries.size(); i += 1) {
             var entry = entries[i] as Dictionary;
             if ((entry["synced"] as Boolean)) { continue; }
-            var payload = entry["payload"] as Dictionary;
-            var env = MessageProtocol.envelope(
-                MessageProtocol.T_WORKOUT_COMPLETED,
-                payload["id"] as String,
-                payload);
-            _transmit(env);
+            var n = entry["n"] as Number;
+            for (var p = 0; p < n; p += 1) {
+                _sendQueue.add({ "id" => entry["id"], "i" => p, "n" => n });
+            }
         }
+        _sendNextPart();
+    }
+
+    function _sendNextPart() as Void {
+        if (_sendQueue.size() == 0) {
+            _sending = false;
+            return;
+        }
+        var head = _sendQueue[0] as Dictionary;
+        _sendQueue = _sendQueue.slice(1, null);
+        var id = head["id"] as String;
+        var i = head["i"] as Number;
+        var n = head["n"] as Number;
+        var part = WorkoutStorage.loadPart(id, i);
+        if (part == null) {
+            // Already acked and cleaned up while queued.
+            _sendNextPart();
+            return;
+        }
+        var env;
+        if (n == 1) {
+            env = MessageProtocol.envelope(MessageProtocol.T_WORKOUT_COMPLETED, id, part);
+        } else {
+            env = MessageProtocol.envelope(MessageProtocol.T_WORKOUT_PART, id, part);
+            env[MessageProtocol.K_CHUNK] = { "i" => i, "n" => n };
+        }
+        _sending = true;
+        try {
+            Communications.transmit(env, null, new OutboxTransmitListener(self));
+        } catch (ex) {
+            System.println("transmit failed: " + ex.getErrorMessage());
+            onPartFailed();
+        }
+    }
+
+    function onPartSent() as Void {
+        _sendNextPart();
+    }
+
+    // Stop here; everything stays in storage and the next hello retries.
+    function onPartFailed() as Void {
+        _sendQueue = [];
+        _sending = false;
     }
 
     // Phone pushes a custom WorkoutTemplate. Payload *is* the template dict;
@@ -182,6 +234,21 @@ class PhoneMessageHandler {
             // 페이로드가 너무 크거나 링크가 없을 때. outbox 에 남아 다음 hello 에서 다시 시도한다.
             System.println("transmit failed: " + ex.getErrorMessage());
         }
+    }
+}
+
+// Drives the outbox: next part on success, stop on failure.
+class OutboxTransmitListener extends Communications.ConnectionListener {
+    private var _handler;
+    function initialize(handler as PhoneMessageHandler) {
+        ConnectionListener.initialize();
+        _handler = handler;
+    }
+    function onComplete() as Void {
+        _handler.onPartSent();
+    }
+    function onError() as Void {
+        _handler.onPartFailed();
     }
 }
 

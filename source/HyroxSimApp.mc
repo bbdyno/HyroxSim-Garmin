@@ -23,6 +23,7 @@ class HyroxSimApp extends Application.AppBase {
     // measurements actually populate SegmentRecord.measurements (the engine
     // method existed previously but had no caller, leaving GPS distance at 0).
     public var activeEngine;          // WorkoutEngine? — null when not in a workout
+    public var activeView;            // ActiveWorkoutView? — owner of activeEngine
 
     // App-wide GPS state. Enabled continuously from onStart so the home
     // screen already reflects acquisition by the time the user presses
@@ -57,6 +58,15 @@ class HyroxSimApp extends Application.AppBase {
     }
 
     function onStop(state as Dictionary?) as Void {
+        // A workout still on screen at shutdown would otherwise vanish:
+        // no FIT file, nothing in the phone outbox.
+        if (activeView != null) {
+            try {
+                activeView.saveOnAppStop();
+            } catch (ex) {
+                System.println("save on stop failed: " + ex.getErrorMessage());
+            }
+        }
         Position.enableLocationEvents(
             Position.LOCATION_DISABLE, method(:onLocation));
         if (_gpsPollTimer != null) {
@@ -132,7 +142,7 @@ class HyroxSimApp extends Application.AppBase {
             var coords = info.position.toDegrees();
             var alt = (info has :altitude && info.altitude != null)
                     ? (info.altitude as Float).toDouble() : null;
-            var t = Time.now().value().toLong() * 1000l;
+            var t = Clock.nowMs();
             activeEngine.ingestLocation(
                 t,
                 coords[0] as Double,

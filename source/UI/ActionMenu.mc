@@ -60,13 +60,7 @@ class ActionMenuDelegate extends WatchUi.Menu2InputDelegate {
             view.hrProvider.disable();
             view.recorder.stop();
             // Serialize & queue for phone transmission.
-            var encoded = CompletedWorkoutCodec.encode(engine, "garmin");
-            var app = Application.getApp() as HyroxSimApp;
-            if (app.phoneHandler != null) {
-                app.phoneHandler.submitCompletedWorkout(encoded);
-            } else {
-                WorkoutStorage.enqueue(encoded);
-            }
+            view.submitIfFinished();
             WatchUi.popView(WatchUi.SLIDE_DOWN);
             WatchUi.switchToView(
                 new ResultView(engine),
