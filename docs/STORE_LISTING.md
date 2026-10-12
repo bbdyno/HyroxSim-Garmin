@@ -113,17 +113,32 @@ Bluetooth 범위 안에 들어오면 결과가 폰으로 자동 전송됩니다.
 
 ---
 
-## What's New (1.0.0 — 첫 출시)
+## What's New (2.0.0)
 
 ```
-Initial release.
+New look, matching the HyroxSim 2.0 phone app.
+• Progress ring: 16 blocks around the screen — gold when a run or station
+  beat its goal, orange when it did not.
+• Bigger, bolder race clock with the goal delta right under it.
+• Button hints at START and BACK, so you never guess which key does what.
+• New finish summary with your slowest station and paged splits.
+• Station target and weight shown during each station.
+• Fix: a discarded workout could still be sent to the phone.
 ```
 
 또는 한국어로:
 
 ```
-첫 출시.
+HyroxSim 2.0 폰 앱과 같은 새 디자인.
+• 진행 링: 화면 테두리 16칸 — 목표보다 빠르면 골드, 느리면 오렌지.
+• 더 크고 굵은 구간 시계와 바로 아래 목표 대비 시간.
+• START·BACK 버튼 옆에 동작 표시.
+• 새 완주 요약(가장 오래 걸린 스테이션)과 페이지식 구간 기록.
+• 스테이션 중 목표 거리·횟수와 무게 표시.
+• 수정: 버린 운동이 폰으로 전송될 수 있던 문제.
 ```
+
+이전: 1.0.0 — 첫 출시.
 
 ---
 
@@ -157,29 +172,36 @@ Initial release.
 |---|---|---|
 | `.iq` 패키지 | `bin/HyroxSim.iq` | — |
 | 스토어 마케팅 아이콘 | `assets/store_icon.png` | 500×500 PNG |
-| 스크린샷 (기기별) | `assets/screenshots/{device}/` | fr265 360×360, fr965 454×454 |
+| 스크린샷 | `assets/screenshots/fr965/` | 454×454 |
 
 ---
 
 ## 스크린샷 캡처 가이드
 
-**시뮬레이터 캡처 단축키**: `Cmd+S` (Connect IQ 시뮬레이터 메뉴 → File → Save Screenshot)
-저장 경로를 `assets/screenshots/{기기}/{시나리오}.png` 패턴으로.
+스토어용 `assets/screenshots/fr965/` 5장은 시뮬레이터 캡처로 만든다. 운동 중 화면은
+버튼을 누르지 않고도 볼 수 있도록 디버그 빌드에 화면 바로가기가 들어 있다
+(`source/Debug/DebugLaunch.mc`, 릴리스 빌드에서는 빠진다).
 
-**캡처할 5개 시나리오** (fr265, fr965 각각):
+```bash
+# 한 화면으로 바로 시작하는 빌드
+tools/screenshots/shoot.sh station fr965 bin/shot.prg
+"$SDK_PATH/bin/monkeydo" bin/shot.prg fr965
 
-| # | 화면 | 진입 방법 | 파일명 |
-|---|---|---|---|
-| 1 | Home (HYROX PRESETS 포커스) | 시작 직후 | `01_home.png` |
-| 2 | Division Picker (Mens Open Single 하이라이트) | 홈 → SELECT | `02_division.png` |
-| 3 | Rox Zone 토글 (ON 하이라이트) | 디비전 선택 후 | `03_rox_toggle.png` |
-| 4 | Active Workout — Run 1/8 진행 중 (HR + GPS pace + delta 보임) | 시작 후 ~30s, GPS 잡힌 상태 | `04_active_run.png` |
-| 5 | Result (Finished + 세그먼트 리스트) | ActionMenu → End workout | `05_result.png` |
+# 모든 화면을 4초씩 차례로 보여 주는 빌드 (화면이 바뀔 때마다 "SHOT <이름>" 출력)
+tools/screenshots/shoot.sh tour fr965 bin/tour.prg
+```
 
-**시뮬레이터 데이터 주입 (Run 화면을 풍부하게 보이려면)**
-- Simulation → Sensors → Heart Rate → 142 (예시)
-- Simulation → Position → 위경도 + 속도 입력 → GPS pace 표시됨
-- Simulation → Time → Time Compression 활성화하면 시간 빠르게 흘러감
+시뮬레이터 창을 캡처한 뒤 화면 영역만 잘라 454×454 로 저장한다.
+
+| 파일명 | 화면 (`shoot.sh` 이름) |
+|---|---|
+| `01_home.png` | 홈, 폰 연결됨 (`home`) |
+| `02_division.png` | 디비전 선택 (`division`) |
+| `03_rox_onoff.png` | ROX ZONE 선택 (`roxzone`) |
+| `04_workout.png` | 운동 중 스테이션 (`station`) |
+| `05_finish.png` | 결과 요약 (`result`) |
+
+기기별 전체 화면 캡처는 `docs/screenshots/2.0/` 에 있다.
 
 ---
 

@@ -7,7 +7,7 @@ https://developer.garmin.com/connect-iq/sdk/
 
 1. macOS 설치 파일 다운로드 → 실행
 2. SDK Manager 실행 (`/Applications/Garmin/...`)
-3. SDK 목록에서 **9.1.0** (또는 최신 안정) "Install"
+3. SDK 목록에서 **9.1.0** 이상 (9.2.0 확인) "Install"
 4. "Set as Current" 확인
 
 ### 확인
