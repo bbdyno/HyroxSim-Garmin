@@ -9,7 +9,7 @@
   - 화면: `HomeView`, `DivisionPickerView`(+ROX 선택), `CustomWorkoutsView`, `ActionMenu`, `ActiveWorkoutView`, `ResultView`
 - 전용 비트맵 폰트: `tools/numfont/build.swift` → `resources*/fonts/` (기기 크기별 4벌)
 - 화면 바로가기(디버그 전용): `source/Debug/DebugLaunch.mc`, `tools/screenshots/shoot.sh`
-- 디버그·테스트 빌드는 폰 통신 끔 (`phoneLinkEnabled()`), 실기기는 `RELEASE=1 ./scripts/build.sh`
+- 디버그·테스트 빌드는 폰 통신 끔 (`phoneLinkEnabled()`), 실기기는 `./scripts/build.sh`(기본이 릴리스), 시뮬레이터는 `DEBUG=1`
 - 버린 운동이 앱 종료 때 폰 outbox 에 들어가던 문제 수정 (`ActionMenu` discard → `markDiscarded`)
 - 테스트 20개 (기존 13 + `RingTests` 7)
 
