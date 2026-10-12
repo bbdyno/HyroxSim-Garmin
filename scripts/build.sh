@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build HyroxSim Garmin app for a specific device.
 # Usage: ./scripts/build.sh [device_id]
-#   RELEASE=1 ./scripts/build.sh <device>   release build for a real watch
+#   DEBUG=1 ./scripts/build.sh <device>     debug build for the simulator (phone link off)
 #   device_id: fr265 (default), fr965
 
 set -euo pipefail
@@ -54,9 +54,10 @@ MONKEYC_ARGS=(
     --private-key "$KEY"
     --warn
 )
-# RELEASE=1 strips debug code. Use it for a real watch: debug builds keep
-# the phone link switched off (the simulator alerts on every transmit).
-if [[ "${RELEASE:-0}" == "1" ]]; then
+# 기본은 릴리스 빌드다 — 실기기에 올리는 빌드는 폰과 통신해야 한다.
+# DEBUG=1 (시뮬레이터용)과 단위 테스트 빌드만 디버그로 만든다: 디버그 빌드는
+# 폰 통신을 끈다(시뮬레이터가 전송마다 연결 경고창을 띄우기 때문).
+if [[ "${DEBUG:-0}" != "1" && "${UNIT_TEST:-0}" != "1" ]]; then
     MONKEYC_ARGS+=(--release)
 fi
 if [[ "${UNIT_TEST:-0}" == "1" ]]; then

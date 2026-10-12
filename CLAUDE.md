@@ -13,7 +13,7 @@ HYROX 경기 시뮬레이터 가민(Connect IQ) 버전. iOS/안드로이드 앱�
 - **Connect IQ SDK 9.1.0 / 9.2.0** (`~/Library/Application Support/Garmin/ConnectIQ/`)
 - **Target API**: 4.0.0+
 - 빌드/실행: `./scripts/build.sh <device>` / `./scripts/run-sim.sh <device>` / `./scripts/test.sh <device>`
-- 실기기용: `RELEASE=1 ./scripts/build.sh <device>` — **디버그·테스트 빌드는 폰 통신이 꺼져 있다** (`phoneLinkEnabled()`). 시뮬레이터가 전송마다 경고창을 띄우기 때문이며, 릴리스 동작은 그대로다
+- 실기기용: `./scripts/build.sh <device>` — **디버그·테스트 빌드는 폰 통신이 꺼져 있다** (`phoneLinkEnabled()`). 시뮬레이터가 전송마다 경고창을 띄우기 때문이며, 릴리스 동작은 그대로다
 - 화면 바로가기(스크린샷): `tools/screenshots/shoot.sh <screen|tour> <device> <out.prg>` — `source/Debug/` 는 전부 `(:debug)` 라 릴리스에 안 들어간다
 - 폰트 재생성: `swift tools/numfont/build.swift`
 

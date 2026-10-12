@@ -45,13 +45,13 @@ fēnix 7 (260px, MIP 64색):
 ./scripts/test.sh fenix7
 
 # 실제 워치에 올릴 빌드
-RELEASE=1 ./scripts/build.sh fr265
+./scripts/build.sh fr265
 ```
 
 **디버그 빌드는 폰과 통신하지 않는다.** 시뮬레이터에는 폰이 없어서 전송할 때마다
 "There is no data connection" 경고창이 뜨기 때문에, 디버그·테스트 빌드에서는 폰 연결을
 꺼 두었다 (`phoneLinkEnabled()`, `source/Sync/PhoneMessageHandler.mc`). 폰 동기화를
-실제 워치에서 확인하려면 `RELEASE=1` 로 빌드한다. 스토어용 `.iq` (`scripts/package.sh`)는
+`./scripts/build.sh` 의 기본은 실기기용 릴리스 빌드다. 시뮬레이터용 디버그 빌드는 `DEBUG=1` 을 붙인다(`run-sim.sh`, `test.sh` 가 알아서 붙인다). 스토어용 `.iq` (`scripts/package.sh`)는
 항상 릴리스 빌드다.
 
 ### 화면 바로 보기

@@ -28,7 +28,7 @@ if ! /usr/libexec/java_home >/dev/null 2>&1; then
 fi
 
 # Build first
-"$ROOT/scripts/build.sh" "$DEVICE"
+DEBUG=1 "$ROOT/scripts/build.sh" "$DEVICE"
 
 # Launch simulator app if not already running
 if ! pgrep -f "ConnectIQ.app/Contents/MacOS/ConnectIQ" > /dev/null 2>&1; then

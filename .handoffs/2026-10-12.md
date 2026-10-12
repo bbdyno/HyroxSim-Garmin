@@ -24,7 +24,7 @@
 - 한글 운동 이름: 시뮬레이터 fr265 시스템 폰트에 한글이 없어 ◇ 로 보임 (한국어 펌웨어 실기기 확인 필요)
 
 ## 다음 작업
-1. 실기기 사이드로드(`RELEASE=1 ./scripts/build.sh <device>`)로 버튼·터치·동기화 확인
+1. 실기기 사이드로드(`./scripts/build.sh <device>`)로 버튼·터치·동기화 확인
 2. `./scripts/package.sh` 로 `.iq` 만들고 스토어 제출 (`docs/STORE_LISTING.md` What's New 2.0.0)
 
 ## 재탐색 명령
